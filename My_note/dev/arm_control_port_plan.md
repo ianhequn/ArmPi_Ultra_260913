@@ -57,7 +57,7 @@
 2. launch：补 `get_package_share_directory` 的 import；去 `need_compile` + 写死 `/home/ubuntu/...`。
 3. `servo_controller` launch：**不启动 `grasp`**（依赖未移植的 `kinematics`）。
 4. 串口参数化（Q3）：动 `Board()` 传参处。
-5. 依赖：安装 `ros-jazzy-control-msgs`（Q2）。
+5. 依赖：安装 `ros-jazzy-control-msgs`（Q2）。✅ 阶段 4 **运行时必需**（当前未装，`sudo` 需密码）。
 6. 移植的厂商 Python 代码**关闭风格门禁**（删默认的 `test_flake8.py`/`test_pep257.py`），代码零改动。
 
 ---
@@ -69,6 +69,7 @@
 | 无硬件 | 仅做到编译通过，通信验收挂起 |
 | IK `.so` 为 aarch64 | 本计划**排除笛卡尔**；仅关节/脉宽 |
 | 串口权限/时序 | dialout/udev；先单舵机试探 |
+| **CH340 在 VM 下会掉线** | 反复 open/close + EIO 会让 VMware 断开该 USB 设备（`/dev/ttyUSB0` 消失）。对策：温柔退出（勿 SIGKILL）、勿频繁开关、掉线后重新拔插/在 VMware 重新连接。 |
 | Python 3.10→3.12 | 编译报错时逐条处理 |
 
 ### 已知问题（厂商原有，暂不修）
@@ -81,6 +82,7 @@
 - 设备：`/dev/ttyUSB0`（CH340, `1a86:7523`），波特率 `1000000`。
 - 直连 SDK：6 个舵机 ID（1~6）全部读到。
 - ROS 节点 + 服务：`/ros_robot_controller/bus_servo/get_state` 正常，读到 `present_id=1`。
+- **语义层联调**：启动驱动 + `servo_controller` launch；经 `/servo_controller` 发 `position_unit='deg'`，舵机 5：597 → 566（deg 16.3）→ 592（回原位）。
 - **话题控制实操**：经 `/ros_robot_controller/bus_servo/set_position` 驱动舵机 5：597 → 567（-30 脉冲 ≈ -7.2°）→ 回 597（实测 593）。
 
 ---
@@ -90,7 +92,7 @@
 - [x] 阶段 0 准备（决策定稿）
 - [x] 阶段 1 `ros_robot_controller_msgs`
 - [x] 阶段 2 `ros_robot_controller`（✅ 硬件已验证：读到舵机 ID）
-- [ ] 阶段 3 `servo_controller_msgs`
-- [ ] 阶段 4 `servo_controller`
-- [ ] 阶段 5 联调
+- [x] 阶段 3 `servo_controller_msgs`（✅ 编译 + 测试全绿）
+- [x] 阶段 4 `servo_controller`（✅ 已移植 + 硬件联调：角度 deg → 脉宽 → 舵机）
+- [x] 阶段 5 联调（✅ 范式 A 脉宽 + 范式 B 角度均实测）
 - [ ] 阶段 6 收尾
