@@ -94,6 +94,11 @@
 - **可选（生产）**：装 udev 规则生成短别名 `/dev/rrc` —— 文件 `src/ros_robot_controller/scripts/99-hiwonder-stm32.rules`，需 `sudo cp` 到 `/etc/udev/rules.d/` + `udevadm control --reload-rules` + `udevadm trigger` + 拔插。
 - 厂商原规则：`KERNEL=="ttyACM0" / GROUP="ubuntu"` → 对本机（`ttyUSB0` / 用户 `u24`）**无效**。
 - 查找命令：`ls -l /dev/serial/by-id/`。
+- **launch 已支持参数**：`device`（默认 `/dev/ttyUSB0`）与 `baudrate`（默认 `1000000`）。覆盖示例：
+  ```bash
+  ros2 launch ros_robot_controller ros_robot_controller.launch.py \
+    device:=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
+  ```
 - **话题控制实操**：经 `/ros_robot_controller/bus_servo/set_position` 驱动舵机 5：597 → 567（-30 脉冲 ≈ -7.2°）→ 回 597（实测 593）。
 
 ---
