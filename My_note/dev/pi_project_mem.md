@@ -74,7 +74,7 @@
 | `user_id` | `u24_ros2_dev_01` |
 | `project_id` | `ae32f4cf20ca41deb1bfee85e7f272aa` |
 | `memory_library_id` | `89ff0fcfe3864dbc928541290fb78877` |
-| 已存条目 | 7 条：开发哲学 / 关键决策 / 控制架构 / 环境事实 / 底层设计草稿 / 移植计划 / 编码约定 |
+| 已存条目 | 8 条：开发哲学 / 关键决策 / 控制架构 / 环境事实 / 底层设计草稿 / 移植计划 / 编码约定 / 移植完成 |
 
 **检索（先查再答）**
 ```bash
@@ -102,6 +102,7 @@ colcon build --packages-select <pkg>
 source install/setup.bash
 ros2 run <pkg> <node>
 ls -l /dev/ttyUSB* /dev/ttyACM*
+ls -l /dev/serial/by-id/    # 稳定设备路径（零配置，推荐）
 ```
 
 ---

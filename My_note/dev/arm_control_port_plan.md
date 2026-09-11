@@ -83,6 +83,17 @@
 - 直连 SDK：6 个舵机 ID（1~6）全部读到。
 - ROS 节点 + 服务：`/ros_robot_controller/bus_servo/get_state` 正常，读到 `present_id=1`。
 - **语义层联调**：启动驱动 + `servo_controller` launch；经 `/servo_controller` 发 `position_unit='deg'`，舵机 5：597 → 566（deg 16.3）→ 592（回原位）。
+
+### 串口设备路径处理（本项目采用零配置）
+
+- **首选（零配置）**：内核自动生成的稳定路径，按芯片序列号命名，免 udev、换端口/插入顺序都稳定：
+  ```
+  /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
+  ```
+  用法（launch/run 传参）：`device:=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0`
+- **可选（生产）**：装 udev 规则生成短别名 `/dev/rrc` —— 文件 `src/ros_robot_controller/scripts/99-hiwonder-stm32.rules`，需 `sudo cp` 到 `/etc/udev/rules.d/` + `udevadm control --reload-rules` + `udevadm trigger` + 拔插。
+- 厂商原规则：`KERNEL=="ttyACM0" / GROUP="ubuntu"` → 对本机（`ttyUSB0` / 用户 `u24`）**无效**。
+- 查找命令：`ls -l /dev/serial/by-id/`。
 - **话题控制实操**：经 `/ros_robot_controller/bus_servo/set_position` 驱动舵机 5：597 → 567（-30 脉冲 ≈ -7.2°）→ 回 597（实测 593）。
 
 ---
@@ -95,4 +106,4 @@
 - [x] 阶段 3 `servo_controller_msgs`（✅ 编译 + 测试全绿）
 - [x] 阶段 4 `servo_controller`（✅ 已移植 + 硬件联调：角度 deg → 脉宽 → 舵机）
 - [x] 阶段 5 联调（✅ 范式 A 脉宽 + 范式 B 角度均实测）
-- [ ] 阶段 6 收尾
+- [x] 阶段 6 收尾（git `fa3dc17`；记忆库已同步；串口路径采用**零配置 by-id**，不用 udev）
