@@ -86,18 +86,20 @@
 
 ### 串口设备路径处理（本项目采用零配置）
 
-- **首选（零配置）**：内核自动生成的稳定路径，按芯片序列号命名，免 udev、换端口/插入顺序都稳定：
-  ```
-  /dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
-  ```
-  用法（launch/run 传参）：`device:=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0`
-- **可选（生产）**：装 udev 规则生成短别名 `/dev/rrc` —— 文件 `src/ros_robot_controller/scripts/99-hiwonder-stm32.rules`，需 `sudo cp` 到 `/etc/udev/rules.d/` + `udevadm control --reload-rules` + `udevadm trigger` + 拔插。
-- 厂商原规则：`KERNEL=="ttyACM0" / GROUP="ubuntu"` → 对本机（`ttyUSB0` / 用户 `u24`）**无效**。
-- 查找命令：`ls -l /dev/serial/by-id/`。
+> ⚠️ 现有**两个同型号 CH340**（机械臂 + 宿主通信）。二者 `ID_SERIAL` 均为 `1a86_USB_Serial`（**无唯一序列号**）→ **`by-id` 名字冲突、不可用**（只生成一个，且当前指向宿主口）。**必须用 `by-path`**（绑定物理 USB 口）。
+
+| 用途 | 路径（by-path，推荐） | 当前节点 | 验证 |
+| --- | --- | --- | --- |
+| **机械臂** | `/dev/serial/by-path/pci-0000:02:00.0-usb-0:2.1:1.0-port0` | `ttyUSB0` | `get_state` 读回 servo1 id=1 ✅ |
+| 宿主通信 | `/dev/serial/by-path/pci-0000:02:00.0-usb-0:2.2:1.0-port0` | `ttyUSB1` | 无舵机响应 ✅ |
+
+- 查找：`ls -l /dev/serial/by-path/`；`by-path` 随**物理 USB 口**变化（换口会变）。
+- 单设备时 `by-id` 也可用；**多设备必须 by-path**（或用 udev 按 `ID_PATH` 分别建别名，如 `/dev/arm`、`/dev/hostlink`）。
+- 厂商原规则：`KERNEL=="ttyACM0" / GROUP="ubuntu"` → 对本机**无效**。
 - **launch 已支持参数**：`device`（默认 `/dev/ttyUSB0`）与 `baudrate`（默认 `1000000`）。覆盖示例：
   ```bash
   ros2 launch ros_robot_controller ros_robot_controller.launch.py \
-    device:=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
+    device:=/dev/serial/by-path/pci-0000:02:00.0-usb-0:2.1:1.0-port0
   ```
 - **话题控制实操**：经 `/ros_robot_controller/bus_servo/set_position` 驱动舵机 5：597 → 567（-30 脉冲 ≈ -7.2°）→ 回 597（实测 593）。
 
