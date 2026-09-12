@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
+r"""
 Launch the whole "serial command controls the arm" chain.
 
 Nodes started (in order of data flow):
