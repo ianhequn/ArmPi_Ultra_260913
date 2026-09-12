@@ -94,12 +94,13 @@
 | 宿主通信 | `/dev/serial/by-path/pci-0000:02:00.0-usb-0:2.2:1.0-port0` | `ttyUSB1` | 无舵机响应 ✅ |
 
 - 查找：`ls -l /dev/serial/by-path/`；`by-path` 随**物理 USB 口**变化（换口会变）。
+- **本项目实操**：按顺序插（机械臂先→`ttyUSB0`，宿主口后→`ttyUSB1`），直接用 `/dev/ttyUSB0`、`/dev/ttyUSB1`，**无需 udev**；换口/顺序变了再改用 `by-path`。
 - 单设备时 `by-id` 也可用；**多设备必须 by-path**（或用 udev 按 `ID_PATH` 分别建别名，如 `/dev/arm`、`/dev/hostlink`）。
 - 厂商原规则：`KERNEL=="ttyACM0" / GROUP="ubuntu"` → 对本机**无效**。
 - **launch 已支持参数**：`device`（默认 `/dev/ttyUSB0`）与 `baudrate`（默认 `1000000`）。覆盖示例：
   ```bash
   ros2 launch ros_robot_controller ros_robot_controller.launch.py \
-    device:=/dev/serial/by-path/pci-0000:02:00.0-usb-0:2.1:1.0-port0
+    device:=/dev/ttyUSB0
   ```
 - **话题控制实操**：经 `/ros_robot_controller/bus_servo/set_position` 驱动舵机 5：597 → 567（-30 脉冲 ≈ -7.2°）→ 回 597（实测 593）。
 
