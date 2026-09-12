@@ -10,3 +10,10 @@
 !src/
 !src/**
 !My_note/**
+
+# --- ignore local/junk (kept out of repo) ---
+.vscode/browse.vc.db
+.vscode/browse.vc.db-shm
+.vscode/browse.vc.db-wal
+__pycache__/
+*.pyc

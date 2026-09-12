@@ -98,20 +98,29 @@ class SerialBridge(Node):
 
     def _read_loop(self):
         """Read command lines from the host until the node shuts down."""
+        buffer = b''
         while rclpy.ok():
             try:
-                raw = self._serial.readline()
+                chunk = self._serial.read(64)
             except serial.SerialException as exc:
                 self.get_logger().error('serial read failed: %s' % exc)
                 return
-            if not raw:
+            if not chunk:
                 continue
-            line = raw.decode('ascii', errors='ignore').strip()
-            if line:
-                self._handle(line)
+            buffer += chunk
+            # accept both '\n' and '\r' (and '\r\n') as line endings
+            while b'\n' in buffer or b'\r' in buffer:
+                ends = [i for i in (buffer.find(b'\n'), buffer.find(b'\r'))
+                        if i != -1]
+                index = min(ends)
+                raw, buffer = buffer[:index], buffer[index + 1:]
+                line = raw.decode('ascii', errors='ignore').strip()
+                if line:
+                    self._handle(line)
 
     def _handle(self, line):
         """Parse and execute one command line, replying to the host."""
+        self.get_logger().info('rx %r' % line)
         try:
             command = parse_command(line, self._default_duration)
         except ProtocolError as exc:
