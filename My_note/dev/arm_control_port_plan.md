@@ -72,10 +72,16 @@
 | **CH340 在 VM 下会掉线** | 反复 open/close + EIO 会让 VMware 断开该 USB 设备（`/dev/ttyUSB0` 消失）。对策：温柔退出（勿 SIGKILL）、勿频繁开关、掉线后重新拔插/在 VMware 重新连接。 |
 | Python 3.10→3.12 | 编译报错时逐条处理 |
 
-### 已知问题（厂商原有，暂不修）
+### 厂商 bug（2026-09-13 更新）
 
-- `ros_robot_controller_node.py` 中 `pub_button_data` 用了 `PacketReportKeyEvents`，但该枚举定义在 SDK、**未 import** → 按键事件触发时 `NameError`（机械臂控制不受影响）。
-- 节点退出时 `pub_callback` 与 `main` **重复 `rclpy.shutdown()`** → 退出报错（不影响运行）。
+**已修（硬件验证）：**
+- `ros_robot_controller_sdk.py` `bus_servo_enable_torque`：**`0x0B`/`0x0C` 写反**（实测 `0x0B`=关扭矩、`0x0C`=开扭矩）→ 导致卸力失效。已对调。
+- `ros_robot_controller_node.py` `get_torque_state`：调了不存在的 `bus_servo_read_torque`（应为 `bus_servo_read_torque_state`）→ 已修。
+- `ros_robot_controller_sdk.py` `recv_task`/`buf_write`：串口 `SerialException` 未捕获会死线程/崩节点 → 已加容错 + 自动重连。
+
+**未修（不影响使用）：**
+- `pub_button_data` 用了未 import 的 `PacketReportKeyEvents` → 按键事件才 `NameError`。
+- 节点退出重复 `rclpy.shutdown()` → 退出报错。
 
 ### 硬件验证记录（2026-09-11）
 
@@ -83,6 +89,12 @@
 - 直连 SDK：6 个舵机 ID（1~6）全部读到。
 - ROS 节点 + 服务：`/ros_robot_controller/bus_servo/get_state` 正常，读到 `present_id=1`。
 - **语义层联调**：启动驱动 + `servo_controller` launch；经 `/servo_controller` 发 `position_unit='deg'`，舵机 5：597 → 566（deg 16.3）→ 592（回原位）。
+
+### 硬件验证记录（2026-09-13）
+
+- **扭矩**：修正 0x0B/0x0C 后，`enable_torque(id,0)` → 读回 `[0]`（卸力）、`(id,1)` → `[1]`（保持）。
+- **VOFA UDP 桥**：`L` 卸力、之后 `A` **自动恢复保持**、`E` 保持、`R` 读实测角度，均正常。
+- **掉线**：USB 完整掉线（`/dev/ttyUSB*` 消失）需重新拔插；软件容错只能防崩，救不回不存在的端口。
 
 ### 串口设备路径处理（本项目采用零配置）
 
