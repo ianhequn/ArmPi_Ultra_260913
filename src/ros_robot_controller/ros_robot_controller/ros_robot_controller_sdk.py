@@ -146,6 +146,7 @@ class Board:
         self.servo_read_lock = threading.Lock()
         self.pwm_servo_read_lock = threading.Lock()
         self.reopen_lock = threading.Lock()
+        self.reopen_failures = 0
 
         # 队列用来存储数据
         self.sys_queue = queue.Queue(maxsize=1)
@@ -675,10 +676,14 @@ class Board:
                 self.state = PacketControllerState.PACKET_CONTROLLER_STATE_STARTBYTE1
                 self.frame = []
                 self.recv_count = 0
-                print('serial port reopened')
+                print('serial port reopened (after %d failures)'
+                      % self.reopen_failures, flush=True)
+                self.reopen_failures = 0
                 return True
             except Exception as e:
-                print('serial port reopen failed: %s' % e)
+                self.reopen_failures += 1
+                print('serial port reopen failed (#%d): %s'
+                      % (self.reopen_failures, e), flush=True)
                 return False
 
     def recv_task(self):
@@ -687,7 +692,8 @@ class Board:
                 try:
                     recv_data = self.port.read()
                 except (serial.SerialException, OSError) as e:
-                    print('recv_task serial error: %s, reopening...' % e)
+                    print('recv_task serial error: %s, reopening...' % e,
+                          flush=True)
                     self._reopen()
                     continue
                 if recv_data:
