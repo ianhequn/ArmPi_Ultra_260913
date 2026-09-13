@@ -469,10 +469,11 @@ class Board:
         return self.pwm_servo_read_and_unpack(servo_id, 0x05, "<BBH")
 
     def bus_servo_enable_torque(self, servo_id, enable):
+        # NOTE: verified on hardware, 0x0B = torque OFF, 0x0C = torque ON
         if enable:
-            data = struct.pack("<BB", 0x0B, servo_id)
-        else:
             data = struct.pack("<BB", 0x0C, servo_id)
+        else:
+            data = struct.pack("<BB", 0x0B, servo_id)
         self.buf_write(PacketFunction.PACKET_FUNC_BUS_SERVO, data)
         time.sleep(0.02)
 
