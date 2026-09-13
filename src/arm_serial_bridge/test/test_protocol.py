@@ -17,7 +17,7 @@
 import math
 
 from arm_serial_bridge.protocol import (
-    format_state, parse_command, ProtocolError, resolve_joint)
+    format_state, parse_command, ProtocolError, resolve_joint, split_commands)
 import pytest
 
 
@@ -69,3 +69,21 @@ def test_state_format():
 
 def test_state_empty():
     assert format_state({}) == 'STATE none'
+
+
+def test_split_normal_command():
+    assert split_commands('A J1 10 J5 40 T 800') == ['A J1 10 J5 40 T 800']
+
+
+def test_split_newlines():
+    assert split_commands('PING\nQ\nH') == ['PING', 'Q', 'H']
+
+
+def test_split_glued_rawdata():
+    text = 'A J1 5.9A J1 -12.1A J2 -35.7H'
+    assert split_commands(text) == [
+        'A J1 5.9', 'A J1 -12.1', 'A J2 -35.7', 'H']
+
+
+def test_split_glued_duration():
+    assert split_commands('A J5 1 T800') == ['A J5 1 T 800']

@@ -31,7 +31,7 @@ import threading
 
 from ament_index_python.packages import get_package_share_directory
 from arm_serial_bridge.protocol import (
-    format_state, parse_command, ProtocolError)
+    format_state, parse_command, ProtocolError, split_commands)
 from arm_vofaUDP_bridge.config import load_config
 import rclpy
 from rclpy.node import Node
@@ -129,8 +129,7 @@ class VofaUdpBridge(Node):
                 self.get_logger().error('udp send failed: %s' % exc)
 
     def _recv_loop(self):
-        """Receive datagrams and dispatch complete lines until shutdown."""
-        buffer = b''
+        """Receive datagrams and dispatch every command they contain."""
         while rclpy.ok():
             try:
                 data, addr = self._socket.recvfrom(2048)
@@ -140,16 +139,10 @@ class VofaUdpBridge(Node):
                 self.get_logger().error('udp recv failed: %s' % exc)
                 return
             self._peer = addr
-            buffer += data
-            # accept both '\n' and '\r' (and '\r\n') as line endings
-            while b'\n' in buffer or b'\r' in buffer:
-                ends = [i for i in (buffer.find(b'\n'), buffer.find(b'\r'))
-                        if i != -1]
-                index = min(ends)
-                raw, buffer = buffer[:index], buffer[index + 1:]
-                line = raw.decode('ascii', errors='ignore').strip()
-                if line:
-                    self._handle(line, addr)
+            # RawData has no separator: split glued commands here
+            text = data.decode('ascii', errors='ignore')
+            for command in split_commands(text):
+                self._handle(command, addr)
 
     def _handle(self, line, addr):
         """Parse and execute one command line, replying to the sender."""

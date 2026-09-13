@@ -28,7 +28,7 @@ existing ``/servo_controller`` topic, keeping control logic in one place.
 import threading
 
 from arm_serial_bridge.protocol import (
-    format_state, parse_command, ProtocolError)
+    format_state, parse_command, ProtocolError, split_commands)
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
@@ -114,9 +114,9 @@ class SerialBridge(Node):
                         if i != -1]
                 index = min(ends)
                 raw, buffer = buffer[:index], buffer[index + 1:]
-                line = raw.decode('ascii', errors='ignore').strip()
-                if line:
-                    self._handle(line)
+                line = raw.decode('ascii', errors='ignore')
+                for command in split_commands(line):
+                    self._handle(command)
 
     def _handle(self, line):
         """Parse and execute one command line, replying to the host."""

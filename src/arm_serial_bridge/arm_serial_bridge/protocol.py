@@ -28,6 +28,7 @@ Joint tokens: J1..J5 and G (gripper) or numeric 1..6.
 """
 
 import math
+import re
 
 # Short command name -> servo bus id (must match servo_controller.yaml)
 JOINT_TO_ID = {
@@ -60,6 +61,39 @@ _NUMERIC_ALIAS = {
 
 class ProtocolError(ValueError):
     """Raised when a command line cannot be parsed."""
+
+
+# command keywords that may start a (new) command
+_COMMAND_KEYWORDS = ('A', 'H', 'Q', 'PING')
+# a command letter glued right after a number: '5.9A' -> '5.9 A'
+_GLUED_LETTER = re.compile(r'(?<=[0-9.])[A-Za-z]')
+# duration marker glued to its value: 'T800' -> 'T 800'
+_GLUED_DURATION = re.compile(r'[Tt](?=[0-9])')
+
+
+def split_commands(text):
+    """
+    Split raw text into individual command strings.
+
+    VOFA+ RawData carries no line separator, so several commands may be
+    glued together (e.g. ``A J1 5.9A J1 -12.1H``).  We re-insert
+    boundaries at every command keyword and after numbers.
+    """
+    text = _GLUED_LETTER.sub(lambda m: ' ' + m.group(0), text)
+    text = _GLUED_DURATION.sub(lambda m: m.group(0) + ' ', text)
+
+    commands = []
+    current = []
+    for token in text.split():
+        if token.upper() in _COMMAND_KEYWORDS:
+            if current:
+                commands.append(' '.join(current))
+            current = [token]
+        else:
+            current.append(token)
+    if current:
+        commands.append(' '.join(current))
+    return commands
 
 
 def resolve_joint(token):
