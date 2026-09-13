@@ -84,6 +84,7 @@ flowchart LR
 > ⚠️ **厂商 bug 与修复（2026-09-13，已硬件验证）**：
 > - `ros_robot_controller_sdk.py` 里 `bus_servo_enable_torque` 的 **`0x0B`/`0x0C` 写反了**（实测 `0x0B`=关扭矩、`0x0C`=开扭矩）→ 导致 `L` 卸不了力。已对调修复。
 > - 驱动 `get_torque_state` 调了不存在的 `bus_servo_read_torque`（应为 `bus_servo_read_torque_state`）→ 已修，现在可用 `get_state` 读扭矩状态验证。
+> - `recv_task` 读串口遇偶发 `SerialException`（USB 串口 hiccup）会**直接死线程**，随后写操作 EIO 把节点搞崩（必须重启）→ 已加**容错+自动重连**（`recv_task`/`buf_write` 捕获异常并 reopen 串口）。
 
 - 关节名 `J1`…`J5` + `G`（夹爪），单位 `deg`；解析/换算逻辑与串口桥**完全共用**（`arm_serial_bridge.protocol`）。
 - **RawData 无分隔符兼容**：VOFA+ RawData 不保证带 `\n`，多条命令可能粘连（如 `A J1 5.9A J1 -12.1H`）；节点用 `split_commands()` 在命令关键字处自动切分。
