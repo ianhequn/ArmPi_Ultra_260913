@@ -81,6 +81,10 @@ flowchart LR
 > `L`/`E` 直接下发 `SetBusServoState`（`enable_torque`）到 `/ros_robot_controller/bus_servo/set_state`，对 6 个舵机全部生效。
 > 采集数据（lerobot / SmolVLA）时：`L` 卸力 → 手动拖动 → 用 `R`（或后续可加的实测话题）读数。
 
+> ⚠️ **厂商 bug 与修复（2026-09-13，已硬件验证）**：
+> - `ros_robot_controller_sdk.py` 里 `bus_servo_enable_torque` 的 **`0x0B`/`0x0C` 写反了**（实测 `0x0B`=关扭矩、`0x0C`=开扭矩）→ 导致 `L` 卸不了力。已对调修复。
+> - 驱动 `get_torque_state` 调了不存在的 `bus_servo_read_torque`（应为 `bus_servo_read_torque_state`）→ 已修，现在可用 `get_state` 读扭矩状态验证。
+
 - 关节名 `J1`…`J5` + `G`（夹爪），单位 `deg`；解析/换算逻辑与串口桥**完全共用**（`arm_serial_bridge.protocol`）。
 - **RawData 无分隔符兼容**：VOFA+ RawData 不保证带 `\n`，多条命令可能粘连（如 `A J1 5.9A J1 -12.1H`）；节点用 `split_commands()` 在命令关键字处自动切分。
 - 越界由网关 `pos_rad_to_pulse()` clamp。

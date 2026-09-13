@@ -145,6 +145,7 @@ class Board:
         self.state = PacketControllerState.PACKET_CONTROLLER_STATE_STARTBYTE1
         self.servo_read_lock = threading.Lock()
         self.pwm_servo_read_lock = threading.Lock()
+        self.reopen_lock = threading.Lock()
 
         # 队列用来存储数据
         self.sys_queue = queue.Queue(maxsize=1)
@@ -363,7 +364,15 @@ class Board:
         buf.append(len(data))
         buf.extend(data)
         buf.append(checksum_crc8(bytes(buf[2:])))
-        self.port.write(buf)
+        try:
+            self.port.write(buf)
+        except (serial.SerialException, OSError) as e:
+            print('buf_write serial error: %s, reopening...' % e)
+            if self._reopen():
+                try:
+                    self.port.write(buf)
+                except (serial.SerialException, OSError) as e2:
+                    print('buf_write retry failed: %s' % e2)
 
     def set_led(self, on_time, off_time, repeat=1, led_id=1):
         on_time = int(on_time*1000)
@@ -648,10 +657,39 @@ class Board:
     def enable_reception(self, enable=True):
         self.enable_recv = enable
 
+    def _reopen(self):
+        # Recover from a transient USB-serial hiccup (Errno 5 / hangup).
+        with self.reopen_lock:
+            try:
+                self.port.close()
+            except Exception:
+                pass
+            time.sleep(0.5)
+            try:
+                self.port.rts = False
+                self.port.dtr = False
+            except Exception:
+                pass
+            try:
+                self.port.open()
+                self.state = PacketControllerState.PACKET_CONTROLLER_STATE_STARTBYTE1
+                self.frame = []
+                self.recv_count = 0
+                print('serial port reopened')
+                return True
+            except Exception as e:
+                print('serial port reopen failed: %s' % e)
+                return False
+
     def recv_task(self):
         while True:
             if self.enable_recv:
-                recv_data = self.port.read()
+                try:
+                    recv_data = self.port.read()
+                except (serial.SerialException, OSError) as e:
+                    print('recv_task serial error: %s, reopening...' % e)
+                    self._reopen()
+                    continue
                 if recv_data:
                     for dat in recv_data:
                         # print("%0.2X "%dat)
