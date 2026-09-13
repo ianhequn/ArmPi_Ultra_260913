@@ -63,8 +63,8 @@ class ProtocolError(ValueError):
     """Raised when a command line cannot be parsed."""
 
 
-# command keywords that may start a (new) command
-_COMMAND_KEYWORDS = ('A', 'H', 'Q', 'PING')
+# tokens that may start a (new) command (used to split glued streams)
+_COMMAND_KEYWORDS = ('A', 'E', 'H', 'L', 'PING', 'Q', 'R')
 # a command letter glued right after a number: '5.9A' -> '5.9 A'
 _GLUED_LETTER = re.compile(r'(?<=[0-9.])[A-Za-z]')
 # duration marker glued to its value: 'T800' -> 'T 800'

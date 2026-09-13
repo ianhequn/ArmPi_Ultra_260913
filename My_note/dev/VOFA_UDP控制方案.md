@@ -70,11 +70,19 @@ flowchart LR
 | 命令 | 含义 | 示例 |
 | --- | --- | --- |
 | `PING` | 心跳 | `PING` → `PONG` |
-| `Q` | 查询关节角度 | `Q` → `STATE J1=.. J2=..` |
+| `Q` | 查询**缓存**关节角（指令值） | `Q` → `STATE J1=.. J2=..` |
+| `R` | 读取**实测**关节角 | `R` → `MEAS J1=.. J2=..` (deg) |
 | `H` | 回初始 | `H` → `OK H` |
 | `A <j> <deg> [T ms]` | 设角度（可多关节） | `A J5 23.3` → `OK A J5 23.3` |
+| `L` | **卸力**（关闭扭矩，可手动拖动） | `L` → `OK L` |
+| `E` | **保持**（开启扭矩） | `E` → `OK E` |
+
+> **`Q` vs `R`**：`Q` 来自 `/controller_manager/joint_states`，是**最近下发的指令值缓存**（手动拖动不会变）；`R` 走驱动节点的 `get_state` 服务读**真实舵机位置**（`0x05`），卸力后仍可读。
+> `L`/`E` 直接下发 `SetBusServoState`（`enable_torque`）到 `/ros_robot_controller/bus_servo/set_state`，对 6 个舵机全部生效。
+> 采集数据（lerobot / SmolVLA）时：`L` 卸力 → 手动拖动 → 用 `R`（或后续可加的实测话题）读数。
 
 - 关节名 `J1`…`J5` + `G`（夹爪），单位 `deg`；解析/换算逻辑与串口桥**完全共用**（`arm_serial_bridge.protocol`）。
+- **RawData 无分隔符兼容**：VOFA+ RawData 不保证带 `\n`，多条命令可能粘连（如 `A J1 5.9A J1 -12.1H`）；节点用 `split_commands()` 在命令关键字处自动切分。
 - 越界由网关 `pos_rad_to_pulse()` clamp。
 
 ---
@@ -84,12 +92,13 @@ flowchart LR
 | 文件 | 职责 |
 | --- | --- |
 | `arm_vofaUDP_bridge/config.py` | 读 JSON 配置（纯函数，可单测） |
-| `arm_vofaUDP_bridge/vofa_udp_bridge.py` | ROS 节点：UDP 收发 ↔ `/servo_controller` |
+| `arm_vofaUDP_bridge/servo_map.py` | 关节映射 + `pulse→deg` 换算（读 `servo_controller.yaml`，纯函数，可单测） |
+| `arm_vofaUDP_bridge/vofa_udp_bridge.py` | ROS 节点：UDP 收发 ↔ `/servo_controller`、`get_state`/`set_state` |
 | `launch/arm_vofa_control.launch.py` | 驱动 + 网关 + UDP 桥 一条命令起 |
-| `test/test_config.py` | 配置单测 |
+| `test/test_config.py`、`test/test_servo_map.py` | 单测 |
 
-**节点参数**：`config_file`、`default_duration`、`state_rate_hz`（>0 时定时把 `STATE` 推给 `remote_ip`）。
-**依赖**：`arm_serial_bridge`（复用其 `protocol`，避免重复实现协议）。
+**节点参数**：`config_file`、`default_duration`、`state_rate_hz`（>0 时定时把 `STATE` 推给 `remote_ip`）、`servo_config`（关节映射用，默认取 `servo_controller` 的 yaml）。
+**依赖**：`arm_serial_bridge`（复用 `protocol`）、`ros_robot_controller_msgs`（读写舵机状态）。
 
 ---
 
