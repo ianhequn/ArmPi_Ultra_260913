@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "ros2": {
+      "source": "arpitg1304/robotics-agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/ros2/SKILL.md",
+      "computedHash": "8d0c5be6de5ea3cc4c143932adeda870bb07b66bdb900fb318294c8ce6ce13a3"
+    }
+  }
+}
