@@ -1,19 +1,71 @@
+# ============================================================
+# 白名单式 .gitignore
+#   规则自上而下匹配，最后命中者生效。
+#   含义：默认忽略一切，只显式放行需要入库的源码与文档。
+# ============================================================
+
+# --- 1. 默认忽略全部（含文件与目录）---
 *
 !*/
 
+# --- 2. 放行版本控制与文档 ---
 !.gitignore
 !README.md
 !AGENTS.md
 
-!.vscode/**
-
+# --- 3. 放行源码包 ---
 !src/
 !src/**
+
+# --- 4. 放行本地笔记/文档 ---
+!My_note/
 !My_note/**
 
-# --- ignore local/junk (kept out of repo) ---
-.vscode/browse.vc.db
-.vscode/browse.vc.db-shm
-.vscode/browse.vc.db-wal
+# --- 5. VSCode 工程：只放行配置文件，排除缓存数据库 ---
+!.vscode/
+!.vscode/**
+.vscode/browse.vc.db*
+.vscode/*.vc.db*
+.vscode/workspaceStorage/
+.vscode/History/
+.vscode/ipch/
+.vscode/*.log
+
+# --- 6. 放行 Agents skill（若需版本化，取消下一行注释）---
+# !.agents/
+# !.agents/**
+
+# ============================================================
+# 7. 全局缓存/生成物：显式排除，防止被上面白名单重新放行
+# ============================================================
 __pycache__/
+*.py[cod]
 *.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.eggs/
+dist/
+
+# ROS2 / colcon 产物
+build/
+install/
+log/
+colcon_build.rc
+colcon_test.rc
+COLCON_IGNORE
+compile_commands.json
+
+# 编辑器/系统垃圾
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# 日志与临时文件
+*.log
+*.tmp
+*.bak
