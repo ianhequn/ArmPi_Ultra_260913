@@ -69,7 +69,7 @@
 | 无硬件 | 仅做到编译通过，通信验收挂起 |
 | IK `.so` 为 aarch64 | 本计划**排除笛卡尔**；仅关节/脉宽 |
 | 串口权限/时序 | dialout/udev；先单舵机试探 |
-| **CH340 在 VM 下会掉线** | 反复 open/close + EIO 会让 VMware 断开该 USB 设备（`/dev/ttyUSB0` 消失）。对策：温柔退出（勿 SIGKILL）、勿频繁开关、掉线后重新拔插/在 VMware 重新连接。 |
+| **CH340 在 VM 下会掉线** | 反复 open/close + EIO 会让 VMware 断开该 USB 设备（`/dev/ttyUSB0` 消失）。对策：温柔退出（勿 SIGKILL）、勿频繁开关、掉线后重新拔插/在 VMware 重新连接。**驱动已加容错+自动重连**：设备恢复后自动 `serial port reopened`，无需重启 launch；重连瞬间板子复位、机械臂回默认位（已接受）。实测偶发于 `L`/`E`（6 舵机扭矩命令）之后，指向 USB 模块接触/瞬态。 |
 | Python 3.10→3.12 | 编译报错时逐条处理 |
 
 ### 厂商 bug（2026-09-13 更新）
