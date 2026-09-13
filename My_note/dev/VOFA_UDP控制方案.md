@@ -117,8 +117,12 @@ VOFA+ 侧：新增数据源 → **网络 / UDP** → 本地端口 `1347` → 协
 
 ## 8. 验证结果
 
-- `colcon test`：**31 tests, 0 failures**。
+- `colcon test`（`arm_serial_bridge` + `arm_vofaUDP_bridge`）：**39 tests, 0 failures**。
 - UDP 端到端（模拟 VOFA 客户端）：`PING→PONG`、`A J5 23.3→OK` 且 `/servo_controller` 收到 `('deg',[(2,23.3)])`、`A J9 1→ERR unknown_joint J9`；配置文件端口生效。
+- **R/L/E 集成测试**（假驱动提供 `get_state` + 记录 `set_state`）：
+  - `R` → `MEAS J1=120.0 J2=120.0 J3=-120.0 J4=120.0 J5=120.0 G=72.0`（实测脉冲 1000；joint3 反向、r_joint init=700）
+  - `L` → `OK L` 且 6 个 `enable_torque=[1,0]`；`E` → `OK E` 且 `enable_torque=[1,1]`
+  - `A J5 23.3` 仍正常
 
 ---
 
