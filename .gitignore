@@ -1,71 +1,38 @@
 # ============================================================
-# 白名单式 .gitignore
-#   规则自上而下匹配，最后命中者生效。
-#   含义：默认忽略一切，只显式放行需要入库的源码与文档。
+# 黑名单式 .gitignore
+#   只忽略「已知的缓存 / 生成物 / 垃圾」，其余一律默认入库。
+#   优点：新增文件都会出现在 `git status`，不会被静默忽略。
+#   注意：`/` 前缀 = 只匹配仓库根目录，避免误伤 src/ 内的同名文件。
 # ============================================================
 
-# --- 1. 默认忽略全部（含文件与目录）---
-*
-!*/
+# --- ROS2 / colcon 构建产物（仅仓库根目录）---
+/build/
+/install/
+/log/
 
-# --- 2. 放行版本控制与文档 ---
-!.gitignore
-!README.md
-!AGENTS.md
+# --- Python 缓存 / 打包产物 ---
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
-# --- 3. 放行源码包 ---
-!src/
-!src/**
-
-# --- 4. 放行本地笔记/文档 ---
-!My_note/
-!My_note/**
-
-# --- 5. VSCode 工程：只放行配置文件，排除缓存数据库 ---
-!.vscode/
-!.vscode/**
+# --- VSCode：忽略缓存数据库，保留工程配置(json) ---
 .vscode/browse.vc.db*
 .vscode/*.vc.db*
 .vscode/workspaceStorage/
 .vscode/History/
 .vscode/ipch/
-.vscode/*.log
 
-# --- 6. 放行 Agents skill（若需版本化，取消下一行注释）---
-# !.agents/
-# !.agents/**
-
-# ============================================================
-# 7. 全局缓存/生成物：显式排除，防止被上面白名单重新放行
-# ============================================================
-__pycache__/
-*.py[cod]
-*.pyc
-*.pyo
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-*.egg-info/
-.eggs/
-dist/
-
-# ROS2 / colcon 产物
-build/
-install/
-log/
-colcon_build.rc
-colcon_test.rc
-COLCON_IGNORE
-compile_commands.json
-
-# 编辑器/系统垃圾
+# --- 编辑器 / 系统垃圾（明确的临时文件，可放心忽略）---
 *.swp
 *.swo
 *~
+*.bak
+*.tmp
 .DS_Store
 Thumbs.db
-
-# 日志与临时文件
-*.log
-*.tmp
-*.bak
