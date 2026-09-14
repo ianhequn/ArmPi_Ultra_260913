@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>arm_lerobot_dataset_stream</name>
+  <version>0.0.0</version>
+  <description>Stream measured arm joint states over TCP JSON for LeRobot.</description>
+  <maintainer email="Rui@SZ.com">u24</maintainer>
+  <license>Apache-2.0</license>
+
+  <depend>rclpy</depend>
+  <depend>ros_robot_controller_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>arm_vofaUDP_bridge</depend>
+  <exec_depend>servo_controller</exec_depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+
+  <test_depend>ament_copyright</test_depend>
+  <test_depend>ament_flake8</test_depend>
+  <test_depend>ament_pep257</test_depend>
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
