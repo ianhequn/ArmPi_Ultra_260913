@@ -45,6 +45,7 @@ from ros_robot_controller_msgs.msg import (
     BusServoState, GetBusServoCmd, SetBusServoState)
 from ros_robot_controller_msgs.srv import GetBusServoState
 from sensor_msgs.msg import JointState
+from std_srvs.srv import Trigger
 
 
 class DatasetStream(Node):
@@ -75,6 +76,8 @@ class DatasetStream(Node):
 
         self._state_client = self.create_client(
             GetBusServoState, 'ros_robot_controller/bus_servo/get_state')
+        self._init_client = self.create_client(
+            Trigger, 'ros_robot_controller/init_finish')
         self._state_pub = self.create_publisher(
             SetBusServoState, 'ros_robot_controller/bus_servo/set_state', 10)
         self._joint_pub = self.create_publisher(
@@ -93,7 +96,8 @@ class DatasetStream(Node):
             % (host, port, self._rate, self._names))
 
         if self.get_parameter('release_torque').value:
-            self._release_torque()
+            threading.Thread(
+                target=self._release_torque_when_ready, daemon=True).start()
 
         threading.Thread(target=self._accept_loop, daemon=True).start()
         threading.Thread(target=self._poll_loop, daemon=True).start()
@@ -220,6 +224,17 @@ class DatasetStream(Node):
         self._joint_pub.publish(msg)
 
     # --------------------------------------------------------------- torque
+
+    def _release_torque_when_ready(self):
+        """Wait for the driver to be up, then disable torque on all servos."""
+        if not self._init_client.wait_for_service(timeout_sec=15.0):
+            self.get_logger().warn(
+                'driver init_finish not available; torque not released')
+            return
+        # publish twice to survive any subscription-matching race
+        for _ in range(2):
+            self._release_torque()
+            time.sleep(0.3)
 
     def _release_torque(self):
         """Disable torque on every mapped servo (for hand-guided recording)."""

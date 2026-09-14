@@ -10,6 +10,7 @@
   <depend>rclpy</depend>
   <depend>ros_robot_controller_msgs</depend>
   <depend>sensor_msgs</depend>
+  <depend>std_srvs</depend>
   <depend>arm_vofaUDP_bridge</depend>
   <exec_depend>servo_controller</exec_depend>
   <exec_depend>launch</exec_depend>
