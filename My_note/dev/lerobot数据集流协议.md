@@ -195,6 +195,7 @@ if __name__ == '__main__':
 - **关节顺序**：以 `names` 为准；默认 `joint1..joint5, r_joint`。
 - **扭矩**：`release_torque:=true` 启动即卸力；否则按需用 VOFA/UDP 桥发 `L`。
 - **串口掉线**：不影响本节点存活；驱动会自动重连（见 [`arm_control_port_plan.md`](arm_control_port_plan.md)）。
+- **舵机电源必须开**：舵机总线没电时，驱动的 `get_state` 会**永久阻塞**（SDK 读舵机无超时），导致本节点发不出帧。此时先确认舵机电源/总线。
 
 ---
 
