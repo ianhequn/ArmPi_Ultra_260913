@@ -25,24 +25,73 @@ flowchart LR
 
 ---
 
-## 2. 连接
+## 2. 用法
+
+### 2.1 前置
+
+- 机械臂已接（默认 `/dev/ttyUSB0`）；VM 与宿主机在仅主机网段（VM `192.168.174.128`）。
+- 已编译并 source 环境：
+  ```bash
+  cd /home/u24/MyTest/dev01/ros2/test_ws01
+  source /opt/ros/jazzy/setup.bash && source install/setup.bash
+  ```
+
+### 2.2 启动（VM 侧）
+
+```bash
+ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py
+# 常用覆盖
+ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py \
+  tcp_port:=1348 poll_rate_hz:=30.0 release_torque:=true
+```
+
+| 参数 | 默认 | 说明 |
+| --- | --- | --- |
+| `arm_device` | `/dev/ttyUSB0` | 机械臂串口 |
+| `arm_baudrate` | `1000000` | 串口波特率 |
+| `tcp_port` | `1348` | 监听端口（可配） |
+| `poll_rate_hz` | `30.0` | 采样率（Hz） |
+| `release_torque` | `false` | 启动即卸力，方便手拖录制 |
+
+> 监听地址 `tcp_host` 默认 `0.0.0.0`（所有网卡）；只想仅主机网可在节点参数里设为 `192.168.174.128`。
+
+### 2.3 启动成功的样子
+
+```
+[dataset_stream]: dataset_stream TCP 0.0.0.0:1348 @ 30.0 Hz, joints=['joint1', ..., 'r_joint']
+[dataset_stream]: client connected: 192.168.174.1:xxxxx     # 有客户端接入时
+```
+
+### 2.4 自测（可选）
+
+VM 本机验证端口与数据：
+```bash
+python3 -c "import socket;s=socket.create_connection(('127.0.0.1',1348));print(s.recv(4096).decode())"
+```
+
+若启用了 `ufw`，放行端口：
+```bash
+sudo ufw allow 1348/tcp
+```
+
+### 2.5 录制流程（手工引导采集）
+
+1. 启动带 `release_torque:=true`（或之后再发 `L`）→ 机械臂**变软**；
+2. 宿主机侧连上 TCP，开始接收 `q`；
+3. 手动拖动机械臂，LeRobot 录制（相机在宿主机，不经网络）；
+4. 录完发 `E`（或直接发 `A`）重新保持。
+
+> `L`/`E`/`A`/`R` 走 [`VOFA_UDP控制方案.md`](VOFA_UDP控制方案.md) 的 UDP 桥；**本数据集节点只做上行数据流**。
+
+### 2.6 连接信息
 
 | 项 | 值 |
 | --- | --- |
 | 方向 | 宿主机 → `connect()` → VM |
-| 地址 | `192.168.174.128:1348`（VM 仅主机 IP，端口可配） |
-| 协议 | 纯 TCP，**UTF-8 文本，每行一个 JSON**，行尾 `\n` |
+| 地址 | `192.168.174.128:1348`（端口可配） |
+| 协议 | 纯 TCP，UTF-8 文本，每行一个 JSON（`\n`） |
 | 推送 | **仅在有客户端连接时**推送（省串口带宽） |
 | 多客户端 | 支持（广播给所有连接） |
-
-启动（VM）：
-```bash
-ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py \
-  tcp_port:=1348 poll_rate_hz:=30.0 release_torque:=true
-```
-- `tcp_port`：监听端口（默认 1348）
-- `poll_rate_hz`：采样率（默认 30）
-- `release_torque`：启动即**卸力**（方便手拖录制）
 
 ---
 
