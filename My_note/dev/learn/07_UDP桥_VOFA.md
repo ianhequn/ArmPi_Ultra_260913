@@ -38,12 +38,21 @@ source /opt/ros/jazzy/setup.bash && source install/setup.bash
 ros2 launch arm_vofaUDP_bridge arm_vofa_control.launch.py
 ```
 
+> VOFA 桥比串口桥**多 3 个命令**：`R`（实测角度）、`L`（卸力）、`E`（保持）。
+
+| 命令 | 作用 | 应答 |
+| --- | --- | --- |
+| `R` | 读**实测**角度 | `MEAS J1=.. J2=..`（度） |
+| `Q` | 读**缓存**角度 | `STATE J1=..` |
+| `L` / `E` | 卸力 / 保持 | `OK L` / `OK E` |
+| `A J1 30 T 500` | 转动（关节 `J1`~`J5`/`G`） | `OK ...` |
+
 ### 2. VOFA+ 配置
 
 - 选 **RawData**。
 - 发送目标：`192.168.174.128:1347`。
 - 本机接收端口：`1346`。
-- 发送框里输入命令（同第 06 章）：`R`、`A joint1 30 500`、`L`、`E`。
+- 发送框里输入命令：`R`、`A J1 30 T 500`、`L`、`E`。
 
 ### 3. 命令行模拟 VOFA
 

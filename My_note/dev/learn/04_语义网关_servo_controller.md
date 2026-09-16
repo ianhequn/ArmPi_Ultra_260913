@@ -23,9 +23,11 @@
 ## 配置（`config/servo_controller.yaml`）
 
 ```yaml
-joint1:  {id: 6, init: 500, min: 0,    max: 1000}
-joint3:  {id: 4, init: 500, min: 1000, max: 500}   # min > max = 反向
-r_joint: {id: 1, init: 700, min: 0,    max: 1000}
+/**:
+  ros__parameters:
+    joint1:  {id: 6, init: 500, min: 0,    max: 1000}
+    joint3:  {id: 4, init: 500, min: 1000, max: 500}   # min > max = 反向
+    r_joint: {id: 1, init: 700, min: 0,    max: 1000}
 ```
 
 ---
