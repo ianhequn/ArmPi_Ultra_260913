@@ -20,6 +20,7 @@
 | `test_service.py` | 启动驱动节点 + 调 `get_state` 服务，读舵机 ID | 自启 |
 | `demo_move.py` | 启动驱动节点 + 经话题小幅摆动舵机 5 并复位 | 自启 |
 | `monitor_servo_cmds.py` | 监控所有总线舵机指令（位置/状态），带时间戳 | 需先起驱动 |
+| `probe_joint_range.py` | **卸力后手推**，测每个关节可达到的 pulse 范围（+ 读舵机内部限位 `0x32`） | 否（独占串口） |
 
 ## 运行
 
@@ -28,6 +29,8 @@ python3 My_note/dev/test/read_servo_id.py
 python3 My_note/dev/test/demo_move.py
 # 先另起终端跑 launch，再在这个终端跑监控
 python3 My_note/dev/test/monitor_servo_cmds.py
+# 手推测关节机械范围（会先卸力，推完 Ctrl+C 出结果）
+python3 My_note/dev/test/probe_joint_range.py
 ```
 
 > 注意：直连 SDK 的脚本与驱动节点**不能同时**占用串口。
