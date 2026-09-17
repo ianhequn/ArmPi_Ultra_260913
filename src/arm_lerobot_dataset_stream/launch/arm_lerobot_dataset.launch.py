@@ -83,18 +83,6 @@ def generate_launch_description():
         default_value='false',
         description='Execute host servo commands (replay); off = recording only')
 
-    max_step_rad = LaunchConfiguration('max_step_rad')
-    max_step_rad_arg = DeclareLaunchArgument(
-        'max_step_rad',
-        default_value='0.5',
-        description='Per-cycle position limit while ramping (rad/tick)')
-
-    max_velocity = LaunchConfiguration('max_velocity_rad_s')
-    max_velocity_arg = DeclareLaunchArgument(
-        'max_velocity_rad_s',
-        default_value='15.0',
-        description='Velocity limit while ramping (rad/s); raise for replay')
-
     watchdog = LaunchConfiguration('watchdog_timeout')
     watchdog_arg = DeclareLaunchArgument(
         'watchdog_timeout',
@@ -137,9 +125,6 @@ def generate_launch_description():
             'release_torque': ParameterValue(release_torque, value_type=bool),
             'enable_downlink': ParameterValue(
                 enable_downlink, value_type=bool),
-            'max_step_rad': ParameterValue(max_step_rad, value_type=float),
-            'max_velocity_rad_s': ParameterValue(
-                max_velocity, value_type=float),
             'watchdog_timeout': ParameterValue(
                 watchdog, value_type=float),
             'release_on_timeout': ParameterValue(
@@ -155,8 +140,6 @@ def generate_launch_description():
         poll_rate_arg,
         release_torque_arg,
         enable_downlink_arg,
-        max_step_rad_arg,
-        max_velocity_arg,
         watchdog_arg,
         release_timeout_arg,
         release_disconnect_arg,

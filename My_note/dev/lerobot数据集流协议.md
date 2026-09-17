@@ -119,9 +119,7 @@ ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py \
 安全行为（默认值）：
 
 - `enable_downlink=false` 时**一行也不执行** → **录制零干扰**；
-- 单周期限幅 `max_step_rad=0.5`、速度限幅 `max_velocity_rad_s=15.0`（= 573~859 °/s）；
-  手拖动作若更快，日志会打 `ramp lagging ...`，直接调大这两个值即可；
-- 斜坡**从实测位置起步** → 上力瞬间不会猛冲；
+- **无限速/无斜坡**：宿主机目标原样下发，由舵机按 `duration` 自己插值 → 完全跟随录制；
 - 看门狗 `watchdog_timeout=1.0`：静默超时 / 客户端断连 → 停止 + 卸力；
 - 下行实际生效约 **28 Hz**（串口读 6 舵机一顿 35ms 是硬开销）。
 

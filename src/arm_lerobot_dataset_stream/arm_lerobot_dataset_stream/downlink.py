@@ -80,23 +80,6 @@ def extract_targets(msg, joint_names):
     return targets
 
 
-def limit_step(current, target, max_step):
-    """Move ``current`` towards ``target`` by at most ``max_step`` rad."""
-    delta = target - current
-    if delta > max_step:
-        return current + max_step
-    if delta < -max_step:
-        return current - max_step
-    return target
-
-
-def step_for_rate(max_step_rad, max_velocity_rad_s, rate_hz):
-    """Return the per-cycle step allowed by the position/velocity limits."""
-    if rate_hz <= 0:
-        return max_step_rad
-    return min(max_step_rad, max_velocity_rad_s / rate_hz)
-
-
 class SafetyState:
     """Track the IDLE / ARMED / SAFE state and the watchdog deadline."""
 

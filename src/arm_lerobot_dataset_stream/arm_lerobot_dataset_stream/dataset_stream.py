@@ -50,7 +50,7 @@ import time
 
 from ament_index_python.packages import get_package_share_directory
 from arm_lerobot_dataset_stream.downlink import (
-    extract_targets, limit_step, parse_line, SafetyState, step_for_rate)
+    extract_targets, parse_line, SafetyState)
 from arm_vofaUDP_bridge.servo_map import load_joint_map, pulse_to_deg
 import rclpy
 from rclpy.node import Node
@@ -82,8 +82,6 @@ class DatasetStream(Node):
         self.declare_parameter('watchdog_timeout', 1.0)
         self.declare_parameter('release_on_timeout', True)
         self.declare_parameter('release_on_disconnect', True)
-        self.declare_parameter('max_step_rad', 0.5)
-        self.declare_parameter('max_velocity_rad_s', 15.0)
         self.declare_parameter('downlink_token', '')
         self.declare_parameter('max_parse_errors', 50)
 
@@ -94,18 +92,6 @@ class DatasetStream(Node):
                            key=lambda i: self._joint_map[i]['name'])
         self._names = [self._joint_map[i]['name'] for i in self._ids]
         self._name_set = set(self._names)
-        # 每个关节允许的弧度区间（= yaml 软限）。宿主机下发的 q 越界会被
-        # 网关 clamp，回放就“只能做到一部分” —— 所以单独报警。
-        self._q_lo = {}
-        self._q_hi = {}
-        for info in self._joint_map.values():
-            lo = math.radians(pulse_to_deg(
-                info['min'], info['init'], info['flipped']))
-            hi = math.radians(pulse_to_deg(
-                info['max'], info['init'], info['flipped']))
-            self._q_lo[info['name']] = min(lo, hi)
-            self._q_hi[info['name']] = max(lo, hi)
-        self._clamp_warn = {}
         self._rate = float(self.get_parameter('poll_rate_hz').value)
         host = self.get_parameter('tcp_host').value
         port = int(self.get_parameter('tcp_port').value)
@@ -133,22 +119,17 @@ class DatasetStream(Node):
         self._token = str(self.get_parameter('downlink_token').value)
         self._max_parse_errors = int(
             self.get_parameter('max_parse_errors').value)
-        self._step = step_for_rate(
-            float(self.get_parameter('max_step_rad').value),
-            float(self.get_parameter('max_velocity_rad_s').value),
-            self._rate)
         self._duration = max(0.02, 1.0 / self._rate) if self._rate else 0.02
         self._safety = SafetyState(
             self.get_parameter('watchdog_timeout').value)
         self._target_rad = {}
-        self._command_rad = {}
         self._measured_rad = {}
         self._parse_errors = 0
         self._command_count = 0
         self._last_summary = 0.0
-        self._lag_warn = 0.0
         self._stalled_since = 0.0
         self._stall_warn = 0.0
+        self._pending = None
 
         self._state_client = self.create_client(
             GetBusServoState, 'ros_robot_controller/bus_servo/get_state')
@@ -343,7 +324,6 @@ class DatasetStream(Node):
         elif command == 'disarm':
             self._set_torque(False)
             self._target_rad = {}
-            self._command_rad = {}
             self._safety.idle()
             self.get_logger().info('downlink: disarmed (torque off)')
         elif command == 'stop':
@@ -351,7 +331,6 @@ class DatasetStream(Node):
             self._safety.touch(now)
             if msg.get('release'):
                 self._set_torque(False)
-                self._command_rad = {}
                 self._safety.idle()
             self.get_logger().info(
                 'downlink: stop (release=%s)' % bool(msg.get('release')))
@@ -359,7 +338,6 @@ class DatasetStream(Node):
             targets = extract_targets(msg, self._name_set)
             if not targets:
                 return
-            self._warn_out_of_range(targets, now)
             if not self._safety.armed and self._auto_engage:
                 self._engage()
                 self._safety.arm(now)
@@ -369,37 +347,21 @@ class DatasetStream(Node):
             self._safety.touch(now)
             self._command_count += 1
 
-    def _warn_out_of_range(self, targets, now):
-        """Warn (rate limited) about targets the gateway is going to clamp."""
-        for name, value in targets.items():
-            lo = self._q_lo.get(name)
-            hi = self._q_hi.get(name)
-            if lo is None or lo - 1e-6 <= value <= hi + 1e-6:
-                continue
-            if now - self._clamp_warn.get(name, 0.0) < 2.0:
-                continue
-            self._clamp_warn[name] = now
-            self.get_logger().warn(
-                'downlink: %s target %.3f rad outside allowed [%.3f, %.3f]'
-                ' -> gateway WILL clamp it' % (name, value, lo, hi))
-
     def _engage(self):
-        """Enable torque and seed the ramp from the measured position."""
-        self._command_rad = dict(self._measured_rad)
+        """Hold the arm at its current pose (torque on)."""
         self._set_torque(True)
-        self._set_torque(True)      # 连发两次，防止单帧丢失导致全程无力
+        self._set_torque(True)      # 连发两次，防单帧丢失导致全程无力
 
     def _enter_safe(self, reason, release):
         """Stop executing targets, optionally releasing torque."""
         self._safety.safe()
         self._target_rad = {}
-        self._command_rad = {}
         self.get_logger().warn('downlink SAFE: %s' % reason)
         if release:
             self._set_torque(False)
 
     def _control_tick(self):
-        """Run the downlink state machine once (no-op when disabled)."""
+        """Publish the latest host target (no-op when disabled)."""
         if not self._enable_downlink:
             return
         now = time.time()
@@ -409,46 +371,21 @@ class DatasetStream(Node):
         if not self._safety.armed or not self._target_rad:
             return
 
+        # 不做任何限速：宿主机给的就是录制时的目标，duration 让舵机自己插值
         msg = ServosPosition()
         msg.duration = float(self._duration)
         msg.position_unit = 'rad'
-        worst = None
         for servo_id in self._ids:
-            name = self._joint_map[servo_id]['name']
-            target = self._target_rad.get(name)
+            target = self._target_rad.get(self._joint_map[servo_id]['name'])
             if target is None:
                 continue
-            current = self._command_rad.get(name)
-            if current is None:
-                current = self._measured_rad.get(name)
-            if current is None:
-                continue        # unknown position: never command a blind jump
-            value = limit_step(current, target, self._step)
-            self._command_rad[name] = value
-            gap = abs(target - value)
-            if worst is None or gap > worst[1]:
-                worst = (name, gap, target, value)
             servo = ServoPosition()
             servo.id = servo_id
-            servo.position = value
+            servo.position = target
             msg.position.append(servo)
         if msg.position:
             self._servo_pub.publish(msg)
-            self._warn_lagging(worst, now)
             self._log_summary(now)
-
-    def _warn_lagging(self, worst, now):
-        """Warn (rate limited) when the ramp cannot keep up with the target."""
-        if worst is None or worst[1] < 0.15:
-            return
-        if now - self._lag_warn < 2.0:
-            return
-        self._lag_warn = now
-        self.get_logger().warn(
-            'downlink: ramp lagging %s: target %.3f but sending %.3f'
-            ' (%.3f rad/tick = %.0f deg/s max)'
-            % (worst[0], worst[2], worst[3], self._step,
-               self._step * self._rate * 57.2958))
 
     def _log_summary(self, now):
         """Log the command rate every few seconds while armed."""
@@ -517,6 +454,12 @@ class DatasetStream(Node):
 
     def _read_frame(self):
         """Read all servos once and return one JSON line (bytes) or None."""
+        # 同时只允许一个 get_state 在飞：否则超时后继续发新请求会让
+        # 响应队列错位（客户端按 FIFO 匹配），最终永久卡死。
+        if self._pending is not None:
+            if not self._pending.done():
+                return None
+            self._pending = None        # 上一帧超时的请求终于回来了，丢弃
         if not self._state_client.service_is_ready():
             if not self._state_client.wait_for_service(timeout_sec=0.2):
                 return None
@@ -529,11 +472,16 @@ class DatasetStream(Node):
             request.cmd.append(cmd)
 
         future = self._state_client.call_async(request)
+        self._pending = future
         done = threading.Event()
         future.add_done_callback(lambda _: done.set())
         if not done.wait(timeout=0.5):
             return None
-        response = future.result()
+        try:
+            response = future.result()
+        except Exception as exc:                  # noqa: BLE001
+            self.get_logger().warn('get_state call failed: %s' % exc)
+            return None
         if response is None:
             return None
 

@@ -140,8 +140,7 @@ def run_case(enable_downlink, port):
                      '-p', 'poll_rate_hz:=20.0',
                      '-p', 'tcp_port:=%d' % port,
                      '-p', 'watchdog_timeout:=0.4',
-                     '-p', 'max_step_rad:=0.15',
-                     '-p', 'max_velocity_rad_s:=2.0'])
+])
     driver = FakeDriver()
     gateway = FakeGateway()
     stream = DatasetStream()
@@ -205,16 +204,11 @@ def case_replay():
         sender.target[0] = 0.5
         time.sleep(0.6)
         joint1 = [c[6] for c in gateway.commands if 6 in c]
-        check('ramp starts at the measured pose',
-              bool(joint1) and joint1[0] <= 0.15 + 1e-6,
-              'first=%.4f' % joint1[0] if joint1 else 'no command')
-        check('ramp respects max step',
-              all(b - a <= 0.15 + 1e-6
-                  for a, b in zip(joint1, joint1[1:])),
-              'n=%d' % len(joint1))
-        check('ramp reaches the target',
+        check('joint1 reaches the target (no rate limit)',
               bool(joint1) and abs(joint1[-1] - 0.5) < 0.02,
               'last=%.4f' % joint1[-1] if joint1 else 'no command')
+        check('joint1 published every tick',
+              len(joint1) >= 8, 'n=%d' % len(joint1))
 
         # watchdog: stop sending, wait past watchdog_timeout (0.4 s)
         sender.stop()

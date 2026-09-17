@@ -251,8 +251,8 @@ flowchart LR
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
-| `max_step_rad` | `0.15` | 单周期单关节最大变化（弧度），超过则钳制；防止数据跳变导致猛冲 |
-| `max_velocity_rad_s` | `2.0` | 最大角速度；节点在 `poll_rate_hz` 上插值逼近目标 |
+| ~~`max_step_rad`~~ | — | ❌ **VM 已移除**（限速会截断快动作）；现在直通目标 + 舵机 `duration` 插值 |
+| ~~`max_velocity_rad_s`~~ | — | ❌ **VM 已移除** |
 | `interpolate` | `true` | 是否在采样周期上做线性插值（`true` 更平滑） |
 
 > 数据集已发现存在单帧最大跳变约 **19.7°（0.34 rad）** 的情况，
@@ -282,8 +282,8 @@ flowchart LR
 | `release_on_timeout` | bool | `true` | 超时是否松力 |
 | `release_on_disconnect` | bool | `true` | 断连是否松力 |
 | `auto_engage` | bool | `true` | 收到 `joints` 是否自动上力 |
-| `max_step_rad` | float | `0.15` | 单周期限幅 |
-| `max_velocity_rad_s` | float | `2.0` | 速度钳制 |
+| ~~`max_step_rad`~~ | — | — | ❌ 已移除 |
+| ~~`max_velocity_rad_s`~~ | — | — | ❌ 已移除 |
 | `interpolate` | bool | `true` | 是否插值 |
 | `downlink_token` | str | `""` | 非空时，命令需带匹配的 `token` |
 | `max_parse_errors` | int | `50` | 连续解析失败上限 |
@@ -536,8 +536,8 @@ pulse = init - q/R   (flipped)
 ```
 enable_downlink=false        auto_engage=true
 watchdog_timeout=1.0         release_on_timeout=true
-release_on_disconnect=true   max_step_rad=0.5
-max_velocity_rad_s=15.0      downlink_token=''   max_parse_errors=50
+release_on_disconnect=true   downlink_token=''
+max_parse_errors=50
 ```
 
 ### 11.8 与设计的差异
@@ -546,7 +546,7 @@ max_velocity_rad_s=15.0      downlink_token=''   max_parse_errors=50
 |---|---|---|
 | `interpolate` 参数 | ❌ 未实现 | 舵机已按 `duration` 自行插值，节点只需限幅 |
 | `prefer_pulse` | ❌ 未实现 | 统一走 `rad`（与数据集 `action` 一致，避免二次换算） |
-| 节点实时插值 | 仅在 `_control_tick` 里做限幅斜坡（起点 = 实测位置） | 防上力瞬间猛冲 |
+| 节点实时插值 | ❌ 已移除限幅斜坡 | 限速会截断快动作（实测差 54°），改为直通 + 舵机 `duration` 插值 |
 | 看门狗超时 -> SAFE | ✅ 已实现（可配是否松力） |
 | 断连 -> SAFE | ✅ 已实现（可配是否松力） |
 
@@ -570,7 +570,7 @@ max_velocity_rad_s=15.0      downlink_token=''   max_parse_errors=50
 |---|---|---|
 | T1 单元 | 向 VM 发一条 `joints`（`enable_downlink=false`） | 机械臂**完全不动**，日志无执行记录 |
 | T2 单元 | `enable_downlink=true` 发一条小幅 `joints` | 对应关节**小幅平滑移动**到目标 |
-| T3 限幅 | 发一个跳变 1.0 rad 的目标 | 实际以 ≤`max_step_rad`/周期逼近，无猛冲 |
+| T3 直通 | 发一个跳变 1.0 rad 的目标 | 立即按目标下发（舵机按 duration 插值）；无节点侧限幅 |
 | T4 看门狗 | 发 `joints` 后停止发送 | ≤`watchdog_timeout`+1 周期内停止，并按配置松力 |
 | T5 断连 | 回放中拔网线/杀进程 | 机械臂停止并松力，VM 不崩 |
 | T6 录制回归 | 用 `record_armpi.json` 正常手拖录一条 | 全程可拖、无上力、数据集正常 |

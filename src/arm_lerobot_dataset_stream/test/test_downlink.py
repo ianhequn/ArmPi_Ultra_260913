@@ -15,8 +15,7 @@
 """Unit tests for the pure downlink helpers (no ROS, no hardware)."""
 
 from arm_lerobot_dataset_stream.downlink import (
-    extract_targets, limit_step, parse_line, SafetyState, step_for_rate)
-import pytest
+    extract_targets, parse_line, SafetyState)
 
 
 def test_parse_line_accepts_known_command():
@@ -47,20 +46,6 @@ def test_extract_targets_filters_bad_channels():
 def test_extract_targets_handles_missing_fields():
     """A joints command without names/q yields no targets."""
     assert extract_targets({'cmd': 'joints'}, {'joint1'}) == {}
-
-
-def test_limit_step_clamps_both_directions():
-    """The step never exceeds max_step but still reaches the target."""
-    assert limit_step(0.0, 0.4, 0.15) == pytest.approx(0.15)
-    assert limit_step(0.0, -0.4, 0.15) == pytest.approx(-0.15)
-    assert limit_step(0.0, 0.1, 0.15) == pytest.approx(0.1)
-
-
-def test_step_for_rate_uses_the_tighter_limit():
-    """Velocity wins when it is slower than the raw position step."""
-    assert step_for_rate(0.15, 2.0, 30.0) == pytest.approx(2.0 / 30.0)
-    assert step_for_rate(0.01, 2.0, 30.0) == pytest.approx(0.01)
-    assert step_for_rate(0.01, 2.0, 0.0) == pytest.approx(0.01)
 
 
 def test_safety_state_lifecycle():
