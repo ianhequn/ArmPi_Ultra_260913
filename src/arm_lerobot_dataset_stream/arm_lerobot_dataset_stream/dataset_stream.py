@@ -43,6 +43,7 @@ See ``My_note/dev/stream_docs/lerobot下行控制协议与VM设计.md``.
 import json
 import math
 import os
+import select
 import socket
 import threading
 import time
@@ -65,6 +66,7 @@ class DatasetStream(Node):
     """TCP JSON stream of measured joint states for LeRobot recording."""
 
     MAX_LINE = 8192
+    SO_SNDBUF_BYTES = 2048
 
     def __init__(self):
         """Read parameters, open the TCP server and start the workers."""
@@ -99,6 +101,15 @@ class DatasetStream(Node):
         self._tcp_clients = []
         self._tcp_lock = threading.Lock()
         self._seq = 0
+
+        # 上行："最新帧" 单槽位（覆盖式）。生产端只写不阻塞，
+        # 每客户端一个发送线程按自己的节奏取走当前最新帧，
+        # 中间被跳过的帧直接丢弃 —— 宿主机可任意改变读取频率。
+        self._frame_cv = threading.Condition()
+        self._latest_frame = None
+        self._latest_seq = 0
+        self._dropped = 0
+        self._closing = False
 
         self._enable_downlink = bool(
             self.get_parameter('enable_downlink').value)
@@ -172,7 +183,7 @@ class DatasetStream(Node):
 
     def _accept_loop(self):
         """Accept TCP clients and start one command reader per client."""
-        while rclpy.ok():
+        while not self._closing:
             try:
                 conn, addr = self._server.accept()
             except socket.timeout:
@@ -180,11 +191,26 @@ class DatasetStream(Node):
             except OSError:
                 return
             conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            # 小发送缓冲：客户端读得慢时只能靠丢弃（而非无限堆内存）
+            conn.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF,
+                            self.SO_SNDBUF_BYTES)
+            # 发送端保持阻塞（永不超时，避免 sendall 部分写入撕坏 JSON 行）；
+            # 用 TCP_USER_TIMEOUT 兜住“对端已死”的连接。
+            conn.setblocking(True)
+            if hasattr(socket, 'TCP_USER_TIMEOUT'):
+                try:
+                    conn.setsockopt(socket.IPPROTO_TCP,
+                                    socket.TCP_USER_TIMEOUT, 10000)
+                except OSError:
+                    pass
             with self._tcp_lock:
                 self._tcp_clients.append(conn)
             self.get_logger().info('client connected: %s:%d' % addr)
             threading.Thread(
                 target=self._client_reader, args=(conn, addr),
+                daemon=True).start()
+            threading.Thread(
+                target=self._client_sender, args=(conn, addr),
                 daemon=True).start()
 
     def _drop_client(self, conn):
@@ -199,13 +225,18 @@ class DatasetStream(Node):
 
     def _client_reader(self, conn, addr):
         """Read downlink command lines from one client until it goes away."""
-        conn.settimeout(0.5)
         buffer = b''
-        while rclpy.ok():
+        while not self._closing:
+            # 用 select 做超时，而不是 conn.settimeout：后者会把同一 socket
+            # 上的 sendall 也变成非阻塞超时模式。
+            try:
+                ready, _, _ = select.select([conn], [], [], 0.5)
+            except (OSError, ValueError):
+                break
+            if not ready:
+                continue
             try:
                 chunk = conn.recv(4096)
-            except socket.timeout:
-                continue
             except OSError:
                 break
             if not chunk:
@@ -240,20 +271,41 @@ class DatasetStream(Node):
         except Exception as exc:                  # noqa: BLE001
             self.get_logger().error('downlink command failed: %s' % exc)
 
-    def _broadcast(self, line):
-        """Send one frame to every client, dropping broken ones."""
-        with self._tcp_lock:
-            clients = list(self._tcp_clients)
-        dead = []
-        for conn in clients:
+    def _publish_frame(self, line):
+        """Store the newest frame and wake the senders (never blocks)."""
+        with self._frame_cv:
+            self._latest_frame = line
+            self._latest_seq += 1
+            self._frame_cv.notify_all()
+
+    def _client_sender(self, conn, addr):
+        """
+        Push the newest frame to one client, skipping frames it missed.
+
+        Runs in its own thread with a *blocking* send, so a slow client
+        slows only itself: the sampling/control loop keeps running and
+        every frame already superseded when the send returns is dropped.
+        """
+        sent_seq = 0
+        while not self._closing:
+            with self._frame_cv:
+                self._frame_cv.wait_for(
+                    lambda: self._latest_seq != sent_seq or self._closing,
+                    timeout=1.0)
+                if self._closing:
+                    return
+                seq = self._latest_seq
+                line = self._latest_frame
+            if line is None or seq == sent_seq:
+                continue
             try:
                 conn.sendall(line)
             except OSError:
-                dead.append(conn)
-        if dead:
-            for conn in dead:
-                self._drop_client(conn)
-            self.get_logger().info('dropped %d client(s)' % len(dead))
+                break
+            if sent_seq and seq > sent_seq + 1:
+                self._dropped += seq - sent_seq - 1
+            sent_seq = seq          # 只有发成功才推进；否则下次取最新
+        self._drop_client(conn)
 
     # -------------------------------------------------------------- downlink
 
@@ -386,7 +438,7 @@ class DatasetStream(Node):
             if has_tcp_clients:
                 frame = self._read_frame()
                 if frame is not None:
-                    self._broadcast(frame)
+                    self._publish_frame(frame)
             self._control_tick()
             elapsed = time.monotonic() - start
             if elapsed < period:
@@ -470,6 +522,9 @@ class DatasetStream(Node):
             self.get_logger().warn('shutting down while armed: releasing')
             self._set_torque(False)
             time.sleep(0.2)
+        self._closing = True
+        with self._frame_cv:
+            self._frame_cv.notify_all()
         with self._tcp_lock:
             clients = list(self._tcp_clients)
             self._tcp_clients = []

@@ -251,8 +251,56 @@ def case_replay():
         teardown(stream, executor)
 
 
+def case_slow_client():
+    """A stalling client must not block the node and gets fresh data."""
+    print('== case 3: async latest-only (slow client) ==')
+    driver, gateway, stream, executor = run_case(False, PORT + 2)
+    sock = socket.socket()
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 2048)  # tiny window
+    sock.settimeout(3.0)
+    sock.connect(('127.0.0.1', PORT + 2))
+    try:
+        sock.recv(4096)                     # drain the first frame
+        seq_before = stream._seq
+        time.sleep(4.0)                     # stop reading -> buffers fill
+        seq_after = stream._seq
+        check('node keeps sampling while a client stalls',
+              seq_after - seq_before >= 50,
+              'seq %d -> %d' % (seq_before, seq_after))
+
+        sock.setblocking(False)             # now drain the backlog, keep last
+        blob = b''
+        deadline = time.time() + 2.5
+        while time.time() < deadline:
+            try:
+                chunk = sock.recv(65536)
+            except BlockingIOError:
+                time.sleep(0.005)
+                continue
+            except OSError:
+                break
+            if not chunk:
+                break
+            blob += chunk
+        lines = [ln for ln in blob.split(b'\n') if ln.strip()]
+        last = json.loads(lines[-1])['seq']
+        check('stale frames were dropped, not queued',
+              bool(lines) and stream._seq - last <= 3,
+              'node=%d last_read=%d read=%d'
+              % (stream._seq, last, len(lines)))
+        check('dropped frames are accounted for (bounded queue)',
+              stream._dropped > 0,
+              'dropped=%d' % stream._dropped)
+    finally:
+        sock.close()
+        teardown(stream, executor)
+
+
 def main():
-    """Run both scenarios and report."""
+    """Run the scenarios and report."""
+    case_recording()
+    case_replay()
+    case_slow_client()
     case_recording()
     case_replay()
     print('\n== result ==')
