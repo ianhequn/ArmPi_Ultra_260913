@@ -1,7 +1,7 @@
 # LeRobot 数据集流协议（arm_lerobot_dataset_stream）
 
 > 回链：[`pi_project_mem.md`](pi_project_mem.md) ｜ 关联：[`VOFA_UDP控制方案.md`](VOFA_UDP控制方案.md)、[`代码组织结构.md`](代码组织结构.md)
-> 状态：**✅ 已实现、集成测试通过**
+> 状态：**✅ 上行 + 下行均已实现**（集成测试通过）
 > 用途：VM(ROS2) 把**实测关节角**通过 TCP+JSON 流给宿主机上的 LeRobot 自定义 Robot 类，**宿主机无需装 ROS2**。
 
 ---
@@ -92,6 +92,39 @@ sudo ufw allow 1348/tcp
 | 协议 | 纯 TCP，UTF-8 文本，每行一个 JSON（`\n`） |
 | 推送 | **仅在有客户端连接时**推送（省串口带宽） |
 | 多客户端 | 支持（广播给所有连接） |
+
+### 2.7 回放（下行，默认关闭）
+
+默认**只上行**。要回放（宿主机下发动作驱臂）必须显式开启：
+
+```bash
+ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py \
+  enable_downlink:=true
+```
+
+宿主机在**同一条 TCP 连接**上发命令行 JSON（每行一个）：
+
+```json
+{"cmd":"joints","names":["joint1","joint2","joint3","joint4","joint5","r_joint"],"q":[0.21,-0.13,0.0,0.0,0.28,0.0]}
+{"cmd":"stop","release":true}
+```
+
+| 命令 | 作用 |
+| --- | --- |
+| `joints` | 下发**绝对目标角度**（弧度）；首条会自动上力 |
+| `arm` / `disarm` | 上力（保持） / 卸力 |
+| `stop` | 停止运动；`"release":true` 则同时卸力 |
+| `ping` | 仅刷新看门狗（不驱动） |
+
+安全行为（默认值）：
+
+- `enable_downlink=false` 时**一行也不执行** → **录制零干扰**；
+- 单周期限幅 `max_step_rad=0.15`、速度限幅 `max_velocity_rad_s=2.0`；
+- 斜坡**从实测位置起步** → 上力瞬间不会猛冲；
+- 看门狗 `watchdog_timeout=0.3`：静默超时 / 客户端断连 → 停止 + 卸力；
+- 下行实际生效约 **28 Hz**（串口读 6 舵机一顿 35ms 是硬开销）。
+
+> 完整协议与参数见 [`stream_docs/lerobot下行控制协议与VM设计.md`](stream_docs/lerobot下行控制协议与VM设计.md) §11。
 
 ---
 

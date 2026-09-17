@@ -43,7 +43,8 @@
 | [`代码组织结构.md`](代码组织结构.md) | **代码组织**：包/节点/模块 + 依赖 + 数据管线（mermaid 多视图） | ✅ |
 | [`宿主机串口控制方案.md`](宿主机串口控制方案.md) | 宿主机经虚拟串口发简单命令控制角度（**已实现+硬件联调**） | ✅ |
 | [`VOFA_UDP控制方案.md`](VOFA_UDP控制方案.md) | 上位机 VOFA+ 经 UDP(RawData ASCII) 双向控制（**已实现、UDP 联调**） | ✅ |
-| [`lerobot数据集流协议.md`](lerobot数据集流协议.md) | VM 经 TCP+JSON 向宿主机 LeRobot 流式输出实测关节角（**已实现**） | ✅ |
+| [`lerobot数据集流协议.md`](lerobot数据集流协议.md) | VM 经 TCP+JSON 向宿主机 LeRobot 流式输出实测关节角（上行），并支持**下行回放** | ✅ |
+| [`stream_docs/lerobot下行控制协议与VM设计.md`](stream_docs/lerobot下行控制协议与VM设计.md) | **下行/回放协议**：命令、限幅、看门狗、状态机（VM 侧已实现） | ✅ |
 | [`learn/`](learn/README.md) | **一步一步开发教程**（11 章：建包→驱动→网关→桥→数据流→排错） | ✅ |
 
 > 阶段：**移植/编码**（阶段 1–4 完成且硬件已验证）。
@@ -57,6 +58,10 @@
 - **D1** 沿用原始包名（`servo_controller` / `ros_robot_controller` / `*_msgs`）。
 - **D2** 最小工作量、按原有格式；不引入 Lifecycle / ros2_control / FollowJointTrajectory。
 - **D3** 接口沿用原工程 `ServosPosition`。
+- **D4** 软硬限一致：`servo_controller.yaml` 的 `min/max` 已对齐**舵机内部硬限（`0x32`）**；
+  joint4 收紧为 −100°~+90°。实测：舵机硬限 id1=[0,700]、id5=[125,875]，其余为出厂 [0,1000]。
+- **D5** LeRobot 链路：上行（录制）+ 下行（回放）共用一条 TCP；`enable_downlink` 默认
+  `false`（**录制零干扰**），下行以 ~28Hz 生效（串口读 6 舵机 35ms 是上限）。
 
 ---
 
