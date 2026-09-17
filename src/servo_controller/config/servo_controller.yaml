@@ -9,20 +9,20 @@
     joint2:
       id: 5
       init: 500
-      min: 0
-      max: 1000
+      min: 125      # 对齐舵机硬限 [125,875]
+      max: 875
 
     joint3:
       id: 4
       init: 500
-      min: 1000
-      max: 500
+      min: 1000     # 反向(min>max)，对齐舵机硬限 [0,1000] -> 角度 [-120,+120]
+      max: 0
 
     joint4:
       id: 3
       init: 500
-      min: 0
-      max: 1000
+      min: 84       # 软限 -100~+90 度 = 脉冲 [84,875]
+      max: 875
 
     joint5:
       id: 2
@@ -34,7 +34,7 @@
       id: 1
       init: 700
       min: 0
-      max: 1000
+      max: 700      # 对齐舵机硬限 [0,700] -> 角度 [-168,0]
 
 
     arm_controller:
