@@ -57,7 +57,51 @@ no measured frames for 7.0s while 1 client(s) connected: get_state not answering
   `_engage()` 上力连发两次
 - ⚠️ 起手保护也一并移除：若宿主机第一帧动作离当前姿态很远，会**较快**地过去（不再渐进）
 
-## 4. 仍未解决 / 待观察
+## 4. 二次排查：`get_state` 永久卡死（真根因，已修）
+
+### 现象
+`no measured frames for 2.0s → 7.0s → 12.1s`（**单调增长、永不恢复**），
+而 `downlink: 22.7 Hz state=ARMED` 一直正常；日志最后停在
+`bus_servo_read_position: [223]`（第 4 个舵机，6 个里少 2 个）后**再无一行**。
+
+### 根因（厂商 SDK `ros_robot_controller_sdk.py`）
+```python
+def bus_servo_read_and_unpack(self, servo_id, cmd, unpack):
+    with self.servo_read_lock:
+        self.buf_write(...)
+        data = self.bus_servo_queue.get(block=True)   # ← 没有超时！
+```
+- **任何一次"响应没到" → 永久阻塞**，而且**持有 `servo_read_lock`**
+- 之后所有读（同一调用里剩下的舵机、所有后续 `get_state`）**全部死等**
+- → 状态服务永久瘫痪。所以是"死了"，不是"慢"
+
+### 为什么"越改越不稳定"
+| 因素 | 作用 |
+| --- | --- |
+| `enable_downlink` 打开 | 总线负载翻倍（读 30Hz×6 + 写 22.7Hz×6）→ 一次丢/错响应概率大增 |
+| `bus_servo_queue` 是 `maxsize=1` + `put_nowait` | 回包**被静默丢弃**；读之前又不清残留 → 一次残留让之后每次读**错位一格**（位置变垃圾） |
+| 无匹配校验 | 读会把别人的/残留的回包当成自己的 |
+
+### 修复（4 处，都围绕"永不死锁"）
+1. `bus_servo_read_and_unpack` **加 `timeout=0.3s`**，超时返回 `None`
+   （所有调用方本来就判 `if state is not None`，天然兼容）
+2. 发请求**前先清空 `bus_servo_queue`**（清掉残留/上次超时的回包）
+3. 回包**按 `id`/`cmd` 匹配**，不匹配就丢弃继续等
+4. `recv_task` 的解析段整体 `try/except`（接收线程死 = 永久卡死，不可接受）
+
+### 实测证据
+| 测试 | 结果 |
+| --- | --- |
+| 读不存在的 id99（= 模拟丢响应） | 修前永久阻塞 → 修后 **0.10s 返回 None** |
+| 卡过之后再读 id6 | 修前永久读不到 → 修后 **0.01s 返回 497** |
+| **20Hz 写 + 30Hz 读 连续 20 秒** | **0 次读超时、0 次 no measured frames** |
+| 启动时读 6 个舵机 | 6 个真实位置、0 次超时 |
+
+### 我上一轮的错误（已一并修）
+`dataset_stream` 里加的 `_pending` 守卫"上一个没回来就不发新请求"，
+把**可恢复的降级**变成了**硬永久卡死**。已加 3s 兜底：超过就丢弃重发。
+
+## 5. 仍未解决 / 待观察
 
 1. `no measured frames` 若再出现 → 查 CH340（`SerialException: [Errno 5] I/O error`
    会让驱动节点直接死掉）、舵机电源、多实例抢串口。

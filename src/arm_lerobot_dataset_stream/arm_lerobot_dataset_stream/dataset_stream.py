@@ -130,6 +130,7 @@ class DatasetStream(Node):
         self._stalled_since = 0.0
         self._stall_warn = 0.0
         self._pending = None
+        self._pending_at = 0.0
 
         self._state_client = self.create_client(
             GetBusServoState, 'ros_robot_controller/bus_servo/get_state')
@@ -474,10 +475,11 @@ class DatasetStream(Node):
         """Read all servos once and return one JSON line (bytes) or None."""
         # 同时只允许一个 get_state 在飞：否则超时后继续发新请求会让
         # 响应队列错位（客户端按 FIFO 匹配），最终永久卡死。
+        # 但绝不能被一个“永远不返回”的请求锁死：超过 3s 就丢掉它重试。
         if self._pending is not None:
-            if not self._pending.done():
+            if not self._pending.done() and time.monotonic() - self._pending_at < 3.0:
                 return None
-            self._pending = None        # 上一帧超时的请求终于回来了，丢弃
+            self._pending = None        # 已回来/超时太久：丢弃重发
         if not self._state_client.service_is_ready():
             if not self._state_client.wait_for_service(timeout_sec=0.2):
                 return None
@@ -491,6 +493,7 @@ class DatasetStream(Node):
 
         future = self._state_client.call_async(request)
         self._pending = future
+        self._pending_at = time.monotonic()
         done = threading.Event()
         future.add_done_callback(lambda _: done.set())
         if not done.wait(timeout=0.5):

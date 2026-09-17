@@ -546,13 +546,43 @@ class Board:
         # self.get_logger().info("bus servo set position: " + str(positions))
         # print("bus servo set position: " + str(positions))
 
-    def bus_servo_read_and_unpack(self, servo_id, cmd, unpack):
+    def bus_servo_read_and_unpack(self, servo_id, cmd, unpack, timeout=0.3):
+        # 注意：读和写（bus_servo_set_position 等）都走
+        # PACKET_FUNC_BUS_SERVO，回包都进同一个单槽 bus_servo_queue。
+        # 原来直接 get(block=True) 有两个致命后果：
+        #  ① 写命令的回包被读当成响应 -> 位置变垃圾（或 struct.error）
+        #  ② 写回包占住槽位 -> 我们的响应被 put_nowait 丢弃 -> 永久阻塞
+        #      （再也不会返回，get_state 彻底死住）
+        # 所以：先清残留 -> 发请求 -> 只接受 id/cmd 完全匹配的包，超时就返回 None。
         with self.servo_read_lock:
+            while True:                     # 清掉上一次超时/写命令留下的回包
+                try:
+                    self.bus_servo_queue.get_nowait()
+                except queue.Empty:
+                    break
             self.buf_write(PacketFunction.PACKET_FUNC_BUS_SERVO, [cmd, servo_id])
-            data = self.bus_servo_queue.get(block=True)
-            servo_id, cmd, success, *info = struct.unpack(unpack, data)
-            if success == 0:
-                return info
+            deadline = time.time() + timeout
+            while True:
+                left = deadline - time.time()
+                if left <= 0:
+                    print('bus_servo read timeout: id=%d cmd=0x%02X'
+                          % (servo_id, cmd), flush=True)
+                    return None
+                try:
+                    data = self.bus_servo_queue.get(block=True, timeout=left)
+                except queue.Empty:
+                    print('bus_servo read timeout: id=%d cmd=0x%02X'
+                          % (servo_id, cmd), flush=True)
+                    return None
+                try:
+                    resp_id, resp_cmd, success, *info = struct.unpack(unpack, data)
+                except struct.error:
+                    continue                # 长度不对：不是我们的包，丢
+                if resp_id != servo_id or resp_cmd != cmd:
+                    continue                # 别人（写命令）的回包，丢
+                if success == 0:
+                    return info
+                return None
 
     def bus_servo_read_id(self, servo_id=254):
         return self.bus_servo_read_and_unpack(servo_id, 0x12, "<BBbB")
@@ -755,10 +785,15 @@ class Board:
                         elif self.state == PacketControllerState.PACKET_CONTROLLER_STATE_CHECKSUM:
                             crc8 = checksum_crc8(bytes(self.frame))
                             if crc8 == dat:
-                                func = PacketFunction(self.frame[0])
-                                data = bytes(self.frame[2:])
-                                if func in self.parsers:
-                                    self.parsers[func](data)
+                                # 接收线程一旦死掉 = 所有读永久卡死，所以
+                                # 解析处也全部包起来，宁可丢包不可死线程
+                                try:
+                                    func = PacketFunction(self.frame[0])
+                                    data = bytes(self.frame[2:])
+                                    if func in self.parsers:
+                                        self.parsers[func](data)
+                                except Exception as e:
+                                    print('packet parse error: %s' % e, flush=True)
                             else:
                                 print("校验失败")
                             self.state = PacketControllerState.PACKET_CONTROLLER_STATE_STARTBYTE1
