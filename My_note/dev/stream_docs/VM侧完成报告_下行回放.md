@@ -14,7 +14,7 @@
 
 ```bash
 # 录制（默认，零下发）
-ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py
+ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py release_torque:=true
 
 # 回放/rollout（必须显式开启）
 ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py \
