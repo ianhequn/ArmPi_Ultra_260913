@@ -535,9 +535,9 @@ pulse = init - q/R   (flipped)
 
 ```
 enable_downlink=false        auto_engage=true
-watchdog_timeout=0.3         release_on_timeout=true
+watchdog_timeout=1.0         release_on_timeout=true
 release_on_disconnect=true   max_step_rad=0.15
-max_velocity_rad_s=2.0       downlink_token=''   max_parse_errors=50
+max_velocity_rad_s=8.0       downlink_token=''   max_parse_errors=50
 ```
 
 ### 11.8 与设计的差异

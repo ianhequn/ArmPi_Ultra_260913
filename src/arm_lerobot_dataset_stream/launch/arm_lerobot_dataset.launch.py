@@ -83,6 +83,36 @@ def generate_launch_description():
         default_value='false',
         description='Execute host servo commands (replay); off = recording only')
 
+    max_step_rad = LaunchConfiguration('max_step_rad')
+    max_step_rad_arg = DeclareLaunchArgument(
+        'max_step_rad',
+        default_value='0.15',
+        description='Per-cycle position limit while ramping (rad/tick)')
+
+    max_velocity = LaunchConfiguration('max_velocity_rad_s')
+    max_velocity_arg = DeclareLaunchArgument(
+        'max_velocity_rad_s',
+        default_value='8.0',
+        description='Velocity limit while ramping (rad/s); raise for replay')
+
+    watchdog = LaunchConfiguration('watchdog_timeout')
+    watchdog_arg = DeclareLaunchArgument(
+        'watchdog_timeout',
+        default_value='1.0',
+        description='Seconds without a host command before SAFE (releasing)')
+
+    release_timeout = LaunchConfiguration('release_on_timeout')
+    release_timeout_arg = DeclareLaunchArgument(
+        'release_on_timeout',
+        default_value='true',
+        description='Release torque when the watchdog fires')
+
+    release_disconnect = LaunchConfiguration('release_on_disconnect')
+    release_disconnect_arg = DeclareLaunchArgument(
+        'release_on_disconnect',
+        default_value='true',
+        description='Release torque when the host disconnects')
+
     driver = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(
             get_package_share_directory('ros_robot_controller'),
@@ -107,6 +137,15 @@ def generate_launch_description():
             'release_torque': ParameterValue(release_torque, value_type=bool),
             'enable_downlink': ParameterValue(
                 enable_downlink, value_type=bool),
+            'max_step_rad': ParameterValue(max_step_rad, value_type=float),
+            'max_velocity_rad_s': ParameterValue(
+                max_velocity, value_type=float),
+            'watchdog_timeout': ParameterValue(
+                watchdog, value_type=float),
+            'release_on_timeout': ParameterValue(
+                release_timeout, value_type=bool),
+            'release_on_disconnect': ParameterValue(
+                release_disconnect, value_type=bool),
         }])
 
     return LaunchDescription([
@@ -116,6 +155,11 @@ def generate_launch_description():
         poll_rate_arg,
         release_torque_arg,
         enable_downlink_arg,
+        max_step_rad_arg,
+        max_velocity_arg,
+        watchdog_arg,
+        release_timeout_arg,
+        release_disconnect_arg,
         driver,
         gateway,
         stream,

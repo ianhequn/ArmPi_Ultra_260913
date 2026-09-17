@@ -79,11 +79,11 @@ class DatasetStream(Node):
         # downlink (host -> VM), disabled by default: recording is untouched
         self.declare_parameter('enable_downlink', False)
         self.declare_parameter('auto_engage', True)
-        self.declare_parameter('watchdog_timeout', 0.3)
+        self.declare_parameter('watchdog_timeout', 1.0)
         self.declare_parameter('release_on_timeout', True)
         self.declare_parameter('release_on_disconnect', True)
         self.declare_parameter('max_step_rad', 0.15)
-        self.declare_parameter('max_velocity_rad_s', 2.0)
+        self.declare_parameter('max_velocity_rad_s', 8.0)
         self.declare_parameter('downlink_token', '')
         self.declare_parameter('max_parse_errors', 50)
 
@@ -94,6 +94,18 @@ class DatasetStream(Node):
                            key=lambda i: self._joint_map[i]['name'])
         self._names = [self._joint_map[i]['name'] for i in self._ids]
         self._name_set = set(self._names)
+        # 每个关节允许的弧度区间（= yaml 软限）。宿主机下发的 q 越界会被
+        # 网关 clamp，回放就“只能做到一部分” —— 所以单独报警。
+        self._q_lo = {}
+        self._q_hi = {}
+        for info in self._joint_map.values():
+            lo = math.radians(pulse_to_deg(
+                info['min'], info['init'], info['flipped']))
+            hi = math.radians(pulse_to_deg(
+                info['max'], info['init'], info['flipped']))
+            self._q_lo[info['name']] = min(lo, hi)
+            self._q_hi[info['name']] = max(lo, hi)
+        self._clamp_warn = {}
         self._rate = float(self.get_parameter('poll_rate_hz').value)
         host = self.get_parameter('tcp_host').value
         port = int(self.get_parameter('tcp_port').value)
@@ -134,6 +146,7 @@ class DatasetStream(Node):
         self._parse_errors = 0
         self._command_count = 0
         self._last_summary = 0.0
+        self._lag_warn = 0.0
 
         self._state_client = self.create_client(
             GetBusServoState, 'ros_robot_controller/bus_servo/get_state')
@@ -344,6 +357,7 @@ class DatasetStream(Node):
             targets = extract_targets(msg, self._name_set)
             if not targets:
                 return
+            self._warn_out_of_range(targets, now)
             if not self._safety.armed and self._auto_engage:
                 self._engage()
                 self._safety.arm(now)
@@ -353,10 +367,25 @@ class DatasetStream(Node):
             self._safety.touch(now)
             self._command_count += 1
 
+    def _warn_out_of_range(self, targets, now):
+        """Warn (rate limited) about targets the gateway is going to clamp."""
+        for name, value in targets.items():
+            lo = self._q_lo.get(name)
+            hi = self._q_hi.get(name)
+            if lo is None or lo - 1e-6 <= value <= hi + 1e-6:
+                continue
+            if now - self._clamp_warn.get(name, 0.0) < 2.0:
+                continue
+            self._clamp_warn[name] = now
+            self.get_logger().warn(
+                'downlink: %s target %.3f rad outside allowed [%.3f, %.3f]'
+                ' -> gateway WILL clamp it' % (name, value, lo, hi))
+
     def _engage(self):
         """Enable torque and seed the ramp from the measured position."""
         self._command_rad = dict(self._measured_rad)
         self._set_torque(True)
+        self._set_torque(True)      # 连发两次，防止单帧丢失导致全程无力
 
     def _enter_safe(self, reason, release):
         """Stop executing targets, optionally releasing torque."""
@@ -381,6 +410,7 @@ class DatasetStream(Node):
         msg = ServosPosition()
         msg.duration = float(self._duration)
         msg.position_unit = 'rad'
+        worst = None
         for servo_id in self._ids:
             name = self._joint_map[servo_id]['name']
             target = self._target_rad.get(name)
@@ -393,13 +423,30 @@ class DatasetStream(Node):
                 continue        # unknown position: never command a blind jump
             value = limit_step(current, target, self._step)
             self._command_rad[name] = value
+            gap = abs(target - value)
+            if worst is None or gap > worst[1]:
+                worst = (name, gap, target, value)
             servo = ServoPosition()
             servo.id = servo_id
             servo.position = value
             msg.position.append(servo)
         if msg.position:
             self._servo_pub.publish(msg)
+            self._warn_lagging(worst, now)
             self._log_summary(now)
+
+    def _warn_lagging(self, worst, now):
+        """Warn (rate limited) when the ramp cannot keep up with the target."""
+        if worst is None or worst[1] < 0.15:
+            return
+        if now - self._lag_warn < 2.0:
+            return
+        self._lag_warn = now
+        self.get_logger().warn(
+            'downlink: ramp lagging %s: target %.3f but sending %.3f'
+            ' (%.3f rad/tick = %.0f deg/s max)'
+            % (worst[0], worst[2], worst[3], self._step,
+               self._step * self._rate * 57.2958))
 
     def _log_summary(self, now):
         """Log the command rate every few seconds while armed."""

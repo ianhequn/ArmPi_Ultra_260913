@@ -204,7 +204,7 @@ def case_replay():
         time.sleep(0.6)
         joint1 = [c[6] for c in gateway.commands if 6 in c]
         check('ramp starts at the measured pose',
-              bool(joint1) and joint1[0] <= 0.1 + 1e-6,
+              bool(joint1) and joint1[0] <= 0.15 + 1e-6,
               'first=%.4f' % joint1[0] if joint1 else 'no command')
         check('ramp respects max step',
               all(b - a <= 0.15 + 1e-6
