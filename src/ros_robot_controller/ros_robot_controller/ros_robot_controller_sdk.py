@@ -711,6 +711,12 @@ class Board:
                           flush=True)
                     self._reopen()
                     continue
+                except Exception as e:
+                    # 与 _reopen 竞争时 os.read(None, ..) 会抛 TypeError；
+                    # 不报出来而是让接收线程继续活着（否则 get_state 永久卡住）
+                    print('recv_task error: %s, continuing...' % e, flush=True)
+                    time.sleep(0.05)
+                    continue
                 if recv_data:
                     for dat in recv_data:
                         # print("%0.2X "%dat)

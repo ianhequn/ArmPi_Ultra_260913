@@ -21,6 +21,8 @@
 | `demo_move.py` | 启动驱动节点 + 经话题小幅摆动舵机 5 并复位 | 自启 |
 | `monitor_servo_cmds.py` | 监控所有总线舵机指令（位置/状态），带时间戳 | 需先起驱动 |
 | `probe_joint_range.py` | **卸力后手推**，测每个关节可达到的 pulse 范围（+ 读舵机内部限位 `0x32`） | 否（独占串口） |
+| `cleanup_arm_stack.sh` | **清理残留进程 / 释放 1348 端口**（Ctrl+C 没退干净时用） | — |
+| `probe_replay_follow.py` | 下发小目标，看实测角是否跟随（验证下行链路） | 是（会小幅动臂） |
 | `test_downlink_integration.py` | 假驱动 + 假网关，测 `dataset_stream` 下行（零下发/限幅/看门狗/断连） | 自启（进程内） |
 
 ## 运行
@@ -34,6 +36,8 @@ python3 My_note/dev/test/monitor_servo_cmds.py
 python3 My_note/dev/test/probe_joint_range.py
 # 下行集成测试（假驱动，无需真机；需先 source 工作区）
 python3 My_note/dev/test/test_downlink_integration.py
+# 清理残留进程（端口被占 / 启动报 Address already in use 时）
+./My_note/dev/test/cleanup_arm_stack.sh
 ```
 
 > 注意：直连 SDK 的脚本与驱动节点**不能同时**占用串口。

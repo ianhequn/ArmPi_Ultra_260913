@@ -147,7 +147,14 @@ class DatasetStream(Node):
 
         self._server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._server.bind((host, port))
+        try:
+            self._server.bind((host, port))
+        except OSError as exc:
+            self.get_logger().error(
+                'cannot bind %s:%d (%s) -> another dataset_stream is probably '
+                'still running. Check with:  ss -ltnp | grep %d  '
+                'and kill it, or pick another tcp_port' % (host, port, exc, port))
+            raise
         self._server.listen(5)
         self._server.settimeout(0.5)
         self.get_logger().info(
