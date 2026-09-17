@@ -29,7 +29,7 @@ ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py \
 | `arm` / `disarm` | 保持 / 卸力 |
 | `stop`（可带 `release:true`） | 停止；可选卸力 |
 | `ping` | 仅刷看门狗 |
-| 限幅 | `max_step_rad=0.15`、`max_velocity_rad_s=8.0`（=344°/s，不成为回放瓶颈）；斜坡**从实测位置起步**，上力不猛冲 |
+| 限幅 | `max_step_rad=0.5`、`max_velocity_rad_s=15.0`（=573~859°/s）；斜坡**从实测位置起步**，上力不猛冲。回放跟不上会打 `ramp lagging` 告警 |
 | 看门狗 | `watchdog_timeout=1.0`：静默超时 / 断连 → 停止 + 卸力；再发命令可恢复 |
 | 频率 | 下行 **~28 Hz**（串口读 6 舵机 35ms 是硬上限） |
 | 单位/顺序 | 弧度；以 `names` 为准（与 `action` 一致） |

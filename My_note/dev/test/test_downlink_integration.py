@@ -139,7 +139,9 @@ def run_case(enable_downlink, port):
                      '-p', 'enable_downlink:=%s' % str(enable_downlink).lower(),
                      '-p', 'poll_rate_hz:=20.0',
                      '-p', 'tcp_port:=%d' % port,
-                     '-p', 'watchdog_timeout:=0.4'])
+                     '-p', 'watchdog_timeout:=0.4',
+                     '-p', 'max_step_rad:=0.15',
+                     '-p', 'max_velocity_rad_s:=2.0'])
     driver = FakeDriver()
     gateway = FakeGateway()
     stream = DatasetStream()

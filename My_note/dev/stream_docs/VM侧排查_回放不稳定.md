@@ -5,58 +5,53 @@
 
 ---
 
-## 1. 已排除
+## 1. 结论（已定位）
 
-宿主机切下的日志显示：
+**根因 A：斜坡限速追不上录制的动作**（`ramp lagging` 已由日志坐实）
 
 ```
-downlink: 114 cmds in 5.0s (22.7 Hz) state=ARMED     ← 宿主机在稳定发
-downlink SAFE: client disconnected                   ← 是宿主机主动断开
+downlink: ramp lagging joint2: target 0.092 but sending 0.562
+downlink: ramp lagging joint2: target -0.980 but sending -0.038   差 54°
+downlink: ramp lagging r_joint: target -1.969 but sending -1.407   差 32°
 ```
 
-- ✅ 宿主机命令率 **22.7 Hz**（远高于看门狗），**没有** `watchdog timeout`
-- ✅ VM 侧入队/状态机正常 → 下发频率不是瓶颈
-- ✅ 录制数据完整（已确认）
+旧默认 `step = min(0.15, 2.0/rate)` → 只有 **115~258 °/s** 的跟踪上限，
+而手拖录制轻松超过 400 °/s → 回放**永久滞后**，动作被"拉平/截断"。
 
-## 2. 剩余嫌疑（两个，均可从日志直接看出）
+**已确认不是**：看门狗（命令率 22.6 Hz，无 timeout）、录制数据、下发链路
+（实测：下发 joint1 +0.10 rad，实测跟到 +0.093 rad ✓）。
 
-| # | 嫌疑 | 机制 | 日志特征 |
-| --- | --- | --- | --- |
-| A | **斜坡限速追不上** | `step=min(max_step_rad=0.15, 8.0/25=0.32)=0.15` rad/tick = **3.75 rad/s = 215°/s**；手拖动作超过这个速度就永久滞后，动作被"拉平" | `downlink: ramp lagging jointX: target 1.200 but sending 0.780` |
-| B | **yaml 软限 clamp** | 网关会把 `q` 限到关节 `[min,max]`。手拖时关节常被推到标定窗口外（实测 joint5 脉冲 −194…1194，远超 [0,1000]）→ 回放**走不到录制的位置** | `downlink: jointX target 1.800 rad outside allowed [-2.094, 2.094] -> gateway WILL clamp it` |
+## 2. 本轮改动
 
-## 3. 本轮改动（可观测 + 可调）
+| 项 | 内容 |
+| --- | --- |
+| `max_step_rad` | `0.15` → **`0.5`** |
+| `max_velocity_rad_s` | `2.0` → `8.0` → **`15.0`** |
+| 新增告警 | `ramp lagging <关节>: target .. but sending ..`（限速卡住） |
+| 新增告警 | `<关节> target .. outside allowed [lo,hi] -> gateway WILL clamp it`（软限截断） |
+| 新增告警 | `no measured frames for Ns while M client(s) connected: <原因>`（VM 不推流） |
+| launch | `max_step_rad` / `max_velocity_rad_s` / `watchdog_timeout` / `release_*` 全部可传 |
 
-### 3.1 新增两条告警（直接对应上面 A / B）
+> 新默认下跟踪上限：25 Hz → `min(0.5, 0.6)=0.5` rad/tick = **12.5 rad/s ≈ 716 °/s**；
+> 30 Hz → 15 rad/s ≈ **859 °/s**。
 
-- `downlink: ramp lagging <关节>: target <x> but sending <y> (0.15 rad/tick = 215 deg/s max)`
-  → 说明**限速**卡住，调大 `max_step_rad` / `max_velocity_rad_s`
-- `downlink: <关节> target <q> rad outside allowed [lo, hi] -> gateway WILL clamp it`
-  → 说明**软限**截断，是机械/标定范围问题，不是速度问题
+## 3. 另一个"VM 不推流"的成因（顺手记录）
 
-### 3.2 参数可在 launch 直接改（以前改不了）
+CH340 进入坏状态时驱动节点直接死掉：
 
-```bash
-ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py \
-  enable_downlink:=true \
-  max_step_rad:=0.5 max_velocity_rad_s:=8.0 watchdog_timeout:=1.0 \
-  release_on_timeout:=true release_on_disconnect:=true
+```
+serial.serialutil.SerialException: [Errno 5] could not open port /dev/ttyUSB0:
+    [Errno 5] Input/output error
+[ERROR] process has died
 ```
 
-### 3.3 默认值放宽
-
-| 参数 | 旧 | 新 | 理由 |
-| --- | --- | --- | --- |
-| `max_velocity_rad_s` | 2.0 (115°/s) | **8.0 (344°/s)** | 手拖动作轻松超过 115°/s |
-| `watchdog_timeout` | 0.3 | **1.0** | 断连安全由断连路径保证，不靠看门狗 |
-
-### 3.4 `_engage()` 上力连发两次
-
-防止单帧丢失导致"全程无力"（表现为**完全没动作**）。
+后果：`get_state` 服务不存在 → `dataset_stream` 一帧不推 → 宿主机"连上就没数据"。
+新加的 `no measured frames ... driver service NOT available` 告警会直接点名。
 
 ## 4. 下一步
 
-1. 宿主机跑一次回放，把 `dataset_stream` 的告警行贴回来。
-2. 若出现 `ramp lagging` → 调大 `max_step_rad`/`max_velocity_rad_s`。
-3. 若出现 `WILL clamp` → 是软限（机械范围）问题，需决定是否放宽 yaml。
-4. 若两者都没有但仍无动作 → 查宿主机发的是不是 `action` 列、以及 `teleop` 是否在同时写同一个端口。
+1. 重跑回放，`grep -E "ramp lagging|WILL clamp|no measured frames"`。
+2. 仍有 `ramp lagging` → 继续加，例如
+   `max_step_rad:=1.0 max_velocity_rad_s:=30.0`（≈ 无限制，完全靠 `duration` 插值跟随）。
+3. 出现 `WILL clamp` → 是软限/机械范围问题（需决定是否放宽 yaml），不是速度问题。
+4. 出现 `no measured frames` → 查串口/驱动（CH340 掉线、舵机电源、多实例抢串口）。

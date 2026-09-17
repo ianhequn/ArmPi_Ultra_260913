@@ -86,13 +86,13 @@ def generate_launch_description():
     max_step_rad = LaunchConfiguration('max_step_rad')
     max_step_rad_arg = DeclareLaunchArgument(
         'max_step_rad',
-        default_value='0.15',
+        default_value='0.5',
         description='Per-cycle position limit while ramping (rad/tick)')
 
     max_velocity = LaunchConfiguration('max_velocity_rad_s')
     max_velocity_arg = DeclareLaunchArgument(
         'max_velocity_rad_s',
-        default_value='8.0',
+        default_value='15.0',
         description='Velocity limit while ramping (rad/s); raise for replay')
 
     watchdog = LaunchConfiguration('watchdog_timeout')

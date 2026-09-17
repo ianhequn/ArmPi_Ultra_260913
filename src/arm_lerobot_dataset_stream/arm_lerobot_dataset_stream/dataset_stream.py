@@ -82,8 +82,8 @@ class DatasetStream(Node):
         self.declare_parameter('watchdog_timeout', 1.0)
         self.declare_parameter('release_on_timeout', True)
         self.declare_parameter('release_on_disconnect', True)
-        self.declare_parameter('max_step_rad', 0.15)
-        self.declare_parameter('max_velocity_rad_s', 8.0)
+        self.declare_parameter('max_step_rad', 0.5)
+        self.declare_parameter('max_velocity_rad_s', 15.0)
         self.declare_parameter('downlink_token', '')
         self.declare_parameter('max_parse_errors', 50)
 
@@ -147,6 +147,8 @@ class DatasetStream(Node):
         self._command_count = 0
         self._last_summary = 0.0
         self._lag_warn = 0.0
+        self._stalled_since = 0.0
+        self._stall_warn = 0.0
 
         self._state_client = self.create_client(
             GetBusServoState, 'ros_robot_controller/bus_servo/get_state')
@@ -485,11 +487,33 @@ class DatasetStream(Node):
             if has_tcp_clients:
                 frame = self._read_frame()
                 if frame is not None:
+                    self._stalled_since = 0.0
                     self._publish_frame(frame)
+                else:
+                    self._warn_stalled()
             self._control_tick()
             elapsed = time.monotonic() - start
             if elapsed < period:
                 time.sleep(period - elapsed)
+
+    def _warn_stalled(self):
+        """Warn when clients are connected but no frame can be produced."""
+        now = time.monotonic()
+        if not self._stalled_since:
+            self._stalled_since = now
+            return
+        if now - self._stalled_since < 2.0 or now - self._stall_warn < 5.0:
+            return
+        self._stall_warn = now
+        if not self._state_client.service_is_ready():
+            reason = ('driver service NOT available -> serial port dead? '
+                      'CH340 I/O error? is ros_robot_controller running?')
+        else:
+            reason = ('get_state not answering -> servo power off? serial '
+                      'bus busy? multiple readers on the port?')
+        self.get_logger().warn(
+            'no measured frames for %.1fs while %d client(s) connected: %s'
+            % (now - self._stalled_since, len(self._tcp_clients), reason))
 
     def _read_frame(self):
         """Read all servos once and return one JSON line (bytes) or None."""
