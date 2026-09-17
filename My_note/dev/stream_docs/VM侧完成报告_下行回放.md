@@ -55,3 +55,44 @@ ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py \
 ## 7. 请求
 
 真机跑一次 `lerobot-replay`（先用手动 smoke test 确认链路），把日志/现象反馈回来。
+
+---
+
+## 8. 【新增】上行改为异步"最新帧"模型
+
+目的：**允许宿主机任意修改 `dataset.fps`，VM 不再需要同步改 `poll_rate_hz`**。
+
+### VM 侧变更
+
+- 采样 tick **不再做网络 I/O**，只覆盖写"最新帧"槽位；每客户端一个独立发送线程。
+- `sendall` 返回后取当前最新帧，**中间被跳过的帧直接丢弃**（不排队、不阻塞采样与下行控制）。
+- 每连接 `SO_SNDBUF=2048`（有界）；`TCP_USER_TIMEOUT=10s` 先住死连接；发送端**不允许超时**（否则部分写入会撕坏 JSON 行）。
+- 实测：客户端**完全不读** 4 秒，VM 采样仍稳定 **20/20 Hz**，客户端不被踢。
+
+### 宿主机侧唯一需要做的事（一次性，很小）
+
+读取时把**可读数据全部读空、只保留最后一行**：
+
+```python
+def recv_latest(sock):
+    blob = b''
+    while True:
+        try:
+            chunk = sock.recv(65536)
+        except BlockingIOError:
+            break
+        if not chunk:
+            return None
+        blob += chunk
+    return json.loads(blob.rstrip().split(b'\n')[-1])
+```
+
+如果不能改（或想先验证）：**只要 `poll_rate_hz` ≥ `fps` 也能工作**，但宿主机内核准的旧帧会逐步增多（延迟增长）。原因：TCP 无法回撤已发出的字节，只能暂存在宿主机内核的 `SO_RCVBUF`（Windows 默认 64KB ≈ 250 帧）。
+
+### 结论
+
+| 配置 | 结果 |
+| --- | --- |
+| 宿主机 drain + `poll_rate_hz ≥ fps` | ✅ 最佳：延迟 ≤1 帧 |
+| 不 drain | ⚠️ 宿主机内积压（建议 drain） |
+| `poll_rate_hz < fps` | 重复帧（无害） |

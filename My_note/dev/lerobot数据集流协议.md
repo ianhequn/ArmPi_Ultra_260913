@@ -126,6 +126,55 @@ ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py \
 
 > 完整协议与参数见 [`stream_docs/lerobot下行控制协议与VM设计.md`](stream_docs/lerobot下行控制协议与VM设计.md) §11。
 
+### 2.8 上行发送模型（异步"最新帧"，VM 不阻塞）
+
+VM **不把网络 I/O 放在采样循环里**：
+
+```
+采样/控制 tick ──> _latest_frame（单槽位，覆盖写）──> 每客户端一个发送线程 ──> TCP
+                     ↑ 不阻塞，不碰 socket        ↑ 发完再取当前最新，中间帧直接丢弃
+```
+
+| 项 | 行为 |
+| --- | --- |
+| 生产端 | 只覆盖写"最新帧"，**无任何 socket 操作** → 再慢的客户端都不会拖慢采样与下行控制 tick |
+| 发送端 | 每客户端独立线程；`sendall` 返回后重取最新帧，**被跳过的帧丢弃**（不排队） |
+| 缓冲 | 每连接 `SO_SNDBUF=2048`（有界，不无限堆内存）；`TCP_USER_TIMEOUT=10s` 兼住死连接 |
+| 阻塞 | `sendall` **不允许超时**（超时会引起部分写入、撕坏 JSON 行）；reader 用 `select` 做自己的超时 |
+| `dropped` | 节点内计数已丢弃帧数（日志/调试用） |
+
+**宿主机读取建议（重要）**：每次读取时把**可读数据全部读空、只保留最后一行**。
+
+```python
+# 推荐：非阻塞把所有可读数据读完，取最后一行
+def recv_latest(sock):
+    blob = b''
+    while True:
+        try:
+            chunk = sock.recv(65536)
+        except BlockingIOError:
+            break
+        if not chunk:
+            return None
+        blob += chunk
+    line = blob.rstrip().split(b'\n')[-1]   # 只要最新的
+    return json.loads(line)
+```
+
+> 为何必须这样做：TCP 是**字节流**，VM 无法回撤已发出的字节；宿主机**内核**会替
+> "读得慢的应用"缓冲（Windows 默认 `SO_RCVBUF` 64KB ≈ 250 帧）。VM 侧只能做到
+> "有界 + 丢弃自己还没发的旧帧"，无法阻止数据积在宿主机内核里。
+
+**结论**：`dataset.fps` 与 `poll_rate_hz` **不再需要严格相等**（宿主机可任意改频率）：
+
+| 场景 | 结果 |
+| --- | --- |
+| `poll_rate_hz` ≥ `fps` + 宿主机 drain | ✅ 最优：每次都拿到当下最新，延迟 ≤1 帧 |
+| `poll_rate_hz` > `fps`，宿主机不 drain | ⚠️ 宿主机内核准的旧帧越来越多（延迟增长） |
+| `poll_rate_hz` < `fps` | 宿主机读到重复帧（无害） |
+
+帧里的 `seq` 连续 +1 表示无丢帧；跳号表示 VM 丢了旧帧（**正常**，取最新即可）。
+
 ---
 
 ## 3. 帧格式

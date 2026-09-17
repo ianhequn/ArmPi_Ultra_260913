@@ -16,7 +16,7 @@
 | 环境 | ROS2 **Jazzy** / Python 3.12 / x86_64 / colcon |
 | 现有包 | `ros_robot_controller[_msgs]`、`servo_controller[_msgs]`、`arm_serial_bridge`、`arm_vofaUDP_bridge`、`arm_lerobot_dataset_stream`、`test_01_CH340`（C++，弃用） |
 | 当前阶段 | **移植完成**（阶段 1–6）+ 宿主机串口桥 + VOFA UDP 桥 + LeRobot 上行/下行（回放） |
-| 最后更新 | 2026-09-14 |
+| 最后更新 | 2026-09-17 |
 
 ---
 
@@ -62,6 +62,9 @@
 - **D3** 接口沿用原工程 `ServosPosition`。
 - **D4** 软硬限一致：`servo_controller.yaml` 的 `min/max` 已对齐**舵机内部硬限（`0x32`）**；
   joint4 收紧为 −100°~+90°。实测：舵机硬限 id1=[0,700]、id5=[125,875]，其余为出厂 [0,1000]。
+- **D6** 上行"最新帧"模型：采样 tick 不碰 socket（覆盖写单槽位），每客户端独立发送线程、
+  跳过即丢（`SO_SNDBUF=2048` 有界、`dropped` 计数）→ 慢客户端拖不住采样/下行 tick，
+  宿主机可任意改 `dataset.fps`（建议读取时 drain 到最新帧）。
 - **D5** LeRobot 链路：上行（录制）+ 下行（回放）共用一条 TCP；`enable_downlink` 默认
   `false`（**录制零干扰**），下行以 ~28Hz 生效（串口读 6 舵机 35ms 是上限）。
 
