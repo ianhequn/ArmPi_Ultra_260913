@@ -165,6 +165,17 @@ class DatasetStream(Node):
 
         threading.Thread(target=self._accept_loop, daemon=True).start()
         threading.Thread(target=self._poll_loop, daemon=True).start()
+        threading.Thread(target=self._check_driver_ready, daemon=True).start()
+
+    def _check_driver_ready(self):
+        """Report clearly at startup whether the driver is reachable."""
+        if self._state_client.wait_for_service(timeout_sec=10.0):
+            self.get_logger().info('driver ready (get_state available)')
+            return
+        self.get_logger().error(
+            'driver NOT ready: ros_robot_controller/bus_servo/get_state is '
+            'missing -> serial port dead? (CH340 "[Errno 5] Input/output '
+            'error" is fixed by unplug/replug the USB) or the driver node died')
 
     @staticmethod
     def _default_servo_config():

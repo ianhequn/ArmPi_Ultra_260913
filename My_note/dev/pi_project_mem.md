@@ -62,6 +62,8 @@
 - **D3** 接口沿用原工程 `ServosPosition`。
 - **D4** 软硬限一致：`servo_controller.yaml` 的 `min/max` 已对齐**舵机内部硬限（`0x32`）**；
   joint4 收紧为 −100°~+90°。实测：舵机硬限 id1=[0,700]、id5=[125,875]，其余为出厂 [0,1000]。
+- **D7** 下行**不做限速**：宿主机目标直通 `/servo_controller`，由舵机按 `duration` 插值（限速会截断快动作，实测差 54°）。
+- **D8** 驱动打开串口**自动重试 30×1s**（CH340 的 `[Errno 5] I/O error` 通常几秒内自愈）；`dataset_stream` 启动 10s 查不到 `get_state` 会明确报错。
 - **D6** 上行"最新帧"模型：采样 tick 不碰 socket（覆盖写单槽位），每客户端独立发送线程、
   跳过即丢（`SO_SNDBUF=2048` 有界、`dropped` 计数）→ 慢客户端拖不住采样/下行 tick，
   宿主机可任意改 `dataset.fps`（建议读取时 drain 到最新帧）。

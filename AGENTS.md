@@ -109,4 +109,5 @@ SKILL_SESSION_ID=<32位hex> python3 scripts/add_memory_content.py \
   ros2 launch ros_robot_controller ros_robot_controller.launch.py \
     device:=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
   ```
-- ⚠️ CH340 在 VMware 下**反复开关**易报 `Input/output error` 甚至掉线：等几秒再启动，或拔插/在 VMware 重新连接。
+- ⚠️ CH340 在 VMware 下**反复开关**易报 `Input/output error` 甚至掉线。驱动现已**自动重试打开串口 30 次（1s 一次）**，通常几秒内自愈；仍不行则拔插 / 在 VMware 重新连接。
+- `dataset_stream` 启动 10s 内若拿不到 `get_state`，会明确报 `driver NOT ready ...`（不再静默无数据）。

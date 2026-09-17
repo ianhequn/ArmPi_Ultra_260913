@@ -116,6 +116,9 @@ class SBusStatus:
         self.fail_safe = False
 
 class Board:
+    OPEN_RETRIES = 30          # 初始打开串口的重试次数（每次间隔 1s）
+    OPEN_RETRY_DELAY = 1.0
+
     buttons_map = {
             'GAMEPAD_BUTTON_MASK_L2':        0x0001,
             'GAMEPAD_BUTTON_MASK_R2':        0x0002,
@@ -140,7 +143,19 @@ class Board:
         self.port.rts = False
         self.port.dtr = False
         self.port.setPort(device)
-        self.port.open()
+        # CH340 在 VMware 下常出现 [Errno 5] Input/output error（设备还在，
+        # 但打不开）。不要一启动就死：重试一段时间，期间拔插 USB 就能接上。
+        for attempt in range(self.OPEN_RETRIES):
+            try:
+                self.port.open()
+                break
+            except (serial.SerialException, OSError) as exc:
+                if attempt + 1 >= self.OPEN_RETRIES:
+                    raise
+                print('open %s failed (%s), retry %d/%d ... plug/replug USB'
+                      % (device, exc, attempt + 1, self.OPEN_RETRIES),
+                      flush=True)
+                time.sleep(self.OPEN_RETRY_DELAY)
 
         self.state = PacketControllerState.PACKET_CONTROLLER_STATE_STARTBYTE1
         self.servo_read_lock = threading.Lock()
