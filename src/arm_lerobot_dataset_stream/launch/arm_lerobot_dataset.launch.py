@@ -27,6 +27,11 @@ The host (Windows/LeRobot) connects with a plain TCP client to
     ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py
     ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py \\
       tcp_port:=1348 poll_rate_hz:=30.0 release_torque:=true
+
+Replay (host drives the arm) additionally needs ``enable_downlink:=true``::
+
+    ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py \\
+      enable_downlink:=true
 """
 
 import os
@@ -72,6 +77,12 @@ def generate_launch_description():
         default_value='false',
         description='On startup, disable torque (loose arm) for hand guiding')
 
+    enable_downlink = LaunchConfiguration('enable_downlink')
+    enable_downlink_arg = DeclareLaunchArgument(
+        'enable_downlink',
+        default_value='false',
+        description='Execute host servo commands (replay); off = recording only')
+
     driver = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(
             get_package_share_directory('ros_robot_controller'),
@@ -94,6 +105,8 @@ def generate_launch_description():
             'tcp_port': ParameterValue(tcp_port, value_type=int),
             'poll_rate_hz': ParameterValue(poll_rate, value_type=float),
             'release_torque': ParameterValue(release_torque, value_type=bool),
+            'enable_downlink': ParameterValue(
+                enable_downlink, value_type=bool),
         }])
 
     return LaunchDescription([
@@ -102,6 +115,7 @@ def generate_launch_description():
         tcp_port_arg,
         poll_rate_arg,
         release_torque_arg,
+        enable_downlink_arg,
         driver,
         gateway,
         stream,

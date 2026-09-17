@@ -28,6 +28,16 @@ One frame per line, UTF-8, terminated by ``'\n'``::
      "pulse":[566,500,500,500,520,700]}
 
 ``q`` is in radians, ``pulse`` is the raw servo value (0..1000).
+
+The same TCP connection carries an optional downlink (host -> VM) used by
+``lerobot-replay`` / rollout.  It stays inert unless ``enable_downlink`` is
+true::
+
+    {"cmd":"joints","names":[...],"q":[...]}   -> publish /servo_controller
+    {"cmd":"arm"} / {"cmd":"disarm"}           -> torque on / off
+    {"cmd":"stop","release":true} / {"cmd":"ping"}
+
+See ``My_note/dev/stream_docs/lerobot下行控制协议与VM设计.md``.
 """
 
 import json
@@ -38,6 +48,8 @@ import threading
 import time
 
 from ament_index_python.packages import get_package_share_directory
+from arm_lerobot_dataset_stream.downlink import (
+    extract_targets, limit_step, parse_line, SafetyState, step_for_rate)
 from arm_vofaUDP_bridge.servo_map import load_joint_map, pulse_to_deg
 import rclpy
 from rclpy.node import Node
@@ -45,11 +57,14 @@ from ros_robot_controller_msgs.msg import (
     BusServoState, GetBusServoCmd, SetBusServoState)
 from ros_robot_controller_msgs.srv import GetBusServoState
 from sensor_msgs.msg import JointState
+from servo_controller_msgs.msg import ServoPosition, ServosPosition
 from std_srvs.srv import Trigger
 
 
 class DatasetStream(Node):
     """TCP JSON stream of measured joint states for LeRobot recording."""
+
+    MAX_LINE = 8192
 
     def __init__(self):
         """Read parameters, open the TCP server and start the workers."""
@@ -59,6 +74,16 @@ class DatasetStream(Node):
         self.declare_parameter('tcp_host', '0.0.0.0')
         self.declare_parameter('tcp_port', 1348)
         self.declare_parameter('release_torque', False)
+        # downlink (host -> VM), disabled by default: recording is untouched
+        self.declare_parameter('enable_downlink', False)
+        self.declare_parameter('auto_engage', True)
+        self.declare_parameter('watchdog_timeout', 0.3)
+        self.declare_parameter('release_on_timeout', True)
+        self.declare_parameter('release_on_disconnect', True)
+        self.declare_parameter('max_step_rad', 0.15)
+        self.declare_parameter('max_velocity_rad_s', 2.0)
+        self.declare_parameter('downlink_token', '')
+        self.declare_parameter('max_parse_errors', 50)
 
         self._joint_map = load_joint_map(
             self.get_parameter('servo_config').value)
@@ -66,6 +91,7 @@ class DatasetStream(Node):
         self._ids = sorted(self._joint_map,
                            key=lambda i: self._joint_map[i]['name'])
         self._names = [self._joint_map[i]['name'] for i in self._ids]
+        self._name_set = set(self._names)
         self._rate = float(self.get_parameter('poll_rate_hz').value)
         host = self.get_parameter('tcp_host').value
         port = int(self.get_parameter('tcp_port').value)
@@ -74,12 +100,38 @@ class DatasetStream(Node):
         self._tcp_lock = threading.Lock()
         self._seq = 0
 
+        self._enable_downlink = bool(
+            self.get_parameter('enable_downlink').value)
+        self._auto_engage = bool(self.get_parameter('auto_engage').value)
+        self._release_on_timeout = bool(
+            self.get_parameter('release_on_timeout').value)
+        self._release_on_disconnect = bool(
+            self.get_parameter('release_on_disconnect').value)
+        self._token = str(self.get_parameter('downlink_token').value)
+        self._max_parse_errors = int(
+            self.get_parameter('max_parse_errors').value)
+        self._step = step_for_rate(
+            float(self.get_parameter('max_step_rad').value),
+            float(self.get_parameter('max_velocity_rad_s').value),
+            self._rate)
+        self._duration = max(0.02, 1.0 / self._rate) if self._rate else 0.02
+        self._safety = SafetyState(
+            self.get_parameter('watchdog_timeout').value)
+        self._target_rad = {}
+        self._command_rad = {}
+        self._measured_rad = {}
+        self._parse_errors = 0
+        self._command_count = 0
+        self._last_summary = 0.0
+
         self._state_client = self.create_client(
             GetBusServoState, 'ros_robot_controller/bus_servo/get_state')
         self._init_client = self.create_client(
             Trigger, 'ros_robot_controller/init_finish')
         self._state_pub = self.create_publisher(
             SetBusServoState, 'ros_robot_controller/bus_servo/set_state', 10)
+        self._servo_pub = self.create_publisher(
+            ServosPosition, 'servo_controller', 1)
         self._joint_pub = self.create_publisher(
             JointState, '~/joint_states_measured', 10)
 
@@ -94,6 +146,11 @@ class DatasetStream(Node):
         self.get_logger().info(
             'dataset_stream TCP %s:%d @ %.1f Hz, joints=%s'
             % (host, port, self._rate, self._names))
+        if self._enable_downlink:
+            self.get_logger().warn(
+                'DOWNLINK ENABLED: host servo commands WILL be executed')
+        else:
+            self.get_logger().info('downlink disabled (recording only)')
 
         if self.get_parameter('release_torque').value:
             threading.Thread(
@@ -114,7 +171,7 @@ class DatasetStream(Node):
     # ----------------------------------------------------------- networking
 
     def _accept_loop(self):
-        """Accept TCP clients and remember their sockets."""
+        """Accept TCP clients and start one command reader per client."""
         while rclpy.ok():
             try:
                 conn, addr = self._server.accept()
@@ -126,6 +183,62 @@ class DatasetStream(Node):
             with self._tcp_lock:
                 self._tcp_clients.append(conn)
             self.get_logger().info('client connected: %s:%d' % addr)
+            threading.Thread(
+                target=self._client_reader, args=(conn, addr),
+                daemon=True).start()
+
+    def _drop_client(self, conn):
+        """Forget and close one client socket (idempotent)."""
+        with self._tcp_lock:
+            if conn in self._tcp_clients:
+                self._tcp_clients.remove(conn)
+        try:
+            conn.close()
+        except OSError:
+            pass
+
+    def _client_reader(self, conn, addr):
+        """Read downlink command lines from one client until it goes away."""
+        conn.settimeout(0.5)
+        buffer = b''
+        while rclpy.ok():
+            try:
+                chunk = conn.recv(4096)
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            if not chunk:
+                break
+            buffer += chunk
+            if len(buffer) > self.MAX_LINE:
+                buffer = buffer[-self.MAX_LINE:]
+            while b'\n' in buffer:
+                line, buffer = buffer.split(b'\n', 1)
+                line = line.strip()
+                if line:
+                    self._handle_line(line)
+        self._drop_client(conn)
+        self.get_logger().info('client disconnected: %s:%d' % addr)
+        if self._safety.armed:
+            self._enter_safe('client disconnected',
+                             self._release_on_disconnect)
+
+    def _handle_line(self, line):
+        """Parse and dispatch one downlink line, counting bad ones."""
+        msg = parse_line(line)
+        if msg is None:
+            self._parse_errors += 1
+            if self._parse_errors > self._max_parse_errors:
+                self._parse_errors = 0
+                self._enter_safe('too many malformed downlink lines',
+                                 self._release_on_disconnect)
+            return
+        self._parse_errors = 0
+        try:
+            self._on_command(msg)
+        except Exception as exc:                  # noqa: BLE001
+            self.get_logger().error('downlink command failed: %s' % exc)
 
     def _broadcast(self, line):
         """Send one frame to every client, dropping broken ones."""
@@ -138,20 +251,133 @@ class DatasetStream(Node):
             except OSError:
                 dead.append(conn)
         if dead:
-            with self._tcp_lock:
-                for conn in dead:
-                    if conn in self._tcp_clients:
-                        self._tcp_clients.remove(conn)
-                    try:
-                        conn.close()
-                    except OSError:
-                        pass
+            for conn in dead:
+                self._drop_client(conn)
             self.get_logger().info('dropped %d client(s)' % len(dead))
+
+    # -------------------------------------------------------------- downlink
+
+    def _on_command(self, msg):
+        """Execute one decoded command (lock L2 is applied here)."""
+        if not self._enable_downlink:
+            return
+        if self._token and msg.get('token') != self._token:
+            return
+
+        command = msg['cmd']
+        now = time.time()
+
+        if command == 'ping':
+            self._safety.touch(now)
+        elif command == 'arm':
+            self._engage()
+            self._safety.arm(now)
+            self.get_logger().info('downlink: armed (torque on)')
+        elif command == 'disarm':
+            self._set_torque(False)
+            self._target_rad = {}
+            self._command_rad = {}
+            self._safety.idle()
+            self.get_logger().info('downlink: disarmed (torque off)')
+        elif command == 'stop':
+            self._target_rad = {}
+            self._safety.touch(now)
+            if msg.get('release'):
+                self._set_torque(False)
+                self._command_rad = {}
+                self._safety.idle()
+            self.get_logger().info(
+                'downlink: stop (release=%s)' % bool(msg.get('release')))
+        elif command == 'joints':
+            targets = extract_targets(msg, self._name_set)
+            if not targets:
+                return
+            if not self._safety.armed and self._auto_engage:
+                self._engage()
+                self._safety.arm(now)
+                self.get_logger().info(
+                    'downlink: armed by first joints command')
+            self._target_rad.update(targets)
+            self._safety.touch(now)
+            self._command_count += 1
+
+    def _engage(self):
+        """Enable torque and seed the ramp from the measured position."""
+        self._command_rad = dict(self._measured_rad)
+        self._set_torque(True)
+
+    def _enter_safe(self, reason, release):
+        """Stop executing targets, optionally releasing torque."""
+        self._safety.safe()
+        self._target_rad = {}
+        self._command_rad = {}
+        self.get_logger().warn('downlink SAFE: %s' % reason)
+        if release:
+            self._set_torque(False)
+
+    def _control_tick(self):
+        """Run the downlink state machine once (no-op when disabled)."""
+        if not self._enable_downlink:
+            return
+        now = time.time()
+        if self._safety.timed_out(now):
+            self._enter_safe('watchdog timeout', self._release_on_timeout)
+            return
+        if not self._safety.armed or not self._target_rad:
+            return
+
+        msg = ServosPosition()
+        msg.duration = float(self._duration)
+        msg.position_unit = 'rad'
+        for servo_id in self._ids:
+            name = self._joint_map[servo_id]['name']
+            target = self._target_rad.get(name)
+            if target is None:
+                continue
+            current = self._command_rad.get(name)
+            if current is None:
+                current = self._measured_rad.get(name)
+            if current is None:
+                continue        # unknown position: never command a blind jump
+            value = limit_step(current, target, self._step)
+            self._command_rad[name] = value
+            servo = ServoPosition()
+            servo.id = servo_id
+            servo.position = value
+            msg.position.append(servo)
+        if msg.position:
+            self._servo_pub.publish(msg)
+            self._log_summary(now)
+
+    def _log_summary(self, now):
+        """Log the command rate every few seconds while armed."""
+        if now - self._last_summary < 5.0:
+            return
+        period = now - self._last_summary if self._last_summary else 5.0
+        self._last_summary = now
+        self.get_logger().info(
+            'downlink: %d cmds in %.1fs (%.1f Hz) state=%s'
+            % (self._command_count, period,
+               self._command_count / period, self._safety.state))
+        self._command_count = 0
+
+    def _set_torque(self, enable):
+        """Enable or disable the torque of every mapped servo."""
+        msg = SetBusServoState()
+        for servo_id in self._ids:
+            state = BusServoState()
+            state.present_id = [1, servo_id]
+            state.enable_torque = [1, 1 if enable else 0]
+            msg.state.append(state)
+        self._state_pub.publish(msg)
+        self.get_logger().info(
+            'torque %s on %d servos'
+            % ('on' if enable else 'off', len(self._ids)))
 
     # --------------------------------------------------------------- polling
 
     def _poll_loop(self):
-        """Poll the servos and broadcast frames (only if a client is there)."""
+        """Poll the servos, broadcast frames and run the downlink tick."""
         period = 1.0 / self._rate if self._rate > 0 else 0.033
         while rclpy.ok():
             start = time.monotonic()
@@ -161,6 +387,7 @@ class DatasetStream(Node):
                 frame = self._read_frame()
                 if frame is not None:
                     self._broadcast(frame)
+            self._control_tick()
             elapsed = time.monotonic() - start
             if elapsed < period:
                 time.sleep(period - elapsed)
@@ -204,6 +431,7 @@ class DatasetStream(Node):
             q_rad.append(math.radians(pulse_to_deg(
                 pulses[servo_id], info['init'], info['flipped'])))
 
+        self._measured_rad = dict(zip(names, q_rad))
         self._publish_joint_state(names, q_rad)
         self._seq += 1
         frame = {
@@ -233,22 +461,15 @@ class DatasetStream(Node):
             return
         # publish twice to survive any subscription-matching race
         for _ in range(2):
-            self._release_torque()
+            self._set_torque(False)
             time.sleep(0.3)
 
-    def _release_torque(self):
-        """Disable torque on every mapped servo (for hand-guided recording)."""
-        msg = SetBusServoState()
-        for servo_id in self._ids:
-            state = BusServoState()
-            state.present_id = [1, servo_id]
-            state.enable_torque = [1, 0]
-            msg.state.append(state)
-        self._state_pub.publish(msg)
-        self.get_logger().info('torque released on %d servos' % len(self._ids))
-
     def destroy_node(self):
-        """Close the TCP server and every client socket."""
+        """Release torque if armed, then close the TCP server/clients."""
+        if self._safety.armed:
+            self.get_logger().warn('shutting down while armed: releasing')
+            self._set_torque(False)
+            time.sleep(0.2)
         with self._tcp_lock:
             clients = list(self._tcp_clients)
             self._tcp_clients = []
