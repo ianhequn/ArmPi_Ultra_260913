@@ -12,10 +12,11 @@
 | 项目 | test_ws01（ROS2 workspace） |
 | 工作区根 | `/home/u24/MyTest/dev01/ros2/test_ws01` |
 | 本文件 | `My_note/dev/pi_project_mem.md` |
+| 顶层索引 | `My_note/README.md`（**本机用途总览 + 使用文档位置**） |
 | 环境 | ROS2 **Jazzy** / Python 3.12 / x86_64 / colcon |
 | 现有包 | `ros_robot_controller[_msgs]`、`servo_controller[_msgs]`、`arm_serial_bridge`、`arm_vofaUDP_bridge`、`arm_lerobot_dataset_stream`、`test_01_CH340`（C++，弃用） |
-| 当前阶段 | **移植完成**（阶段 1–6）；新增：宿主机串口控制（方案） |
-| 最后更新 | 2026-09-11 |
+| 当前阶段 | **移植完成**（阶段 1–6）+ 宿主机串口桥 + VOFA UDP 桥 + LeRobot 上行/下行（回放） |
+| 最后更新 | 2026-09-14 |
 
 ---
 
@@ -49,6 +50,7 @@
 
 > 阶段：**移植/编码**（阶段 1–4 完成且硬件已验证）。
 > 其它位置：`My_note/codex/`（Codex 工具文档）。
+> **用途总览请见 [`../README.md`](../README.md)**（本机所有用途 + 各用途文档位置）。
 
 ---
 
