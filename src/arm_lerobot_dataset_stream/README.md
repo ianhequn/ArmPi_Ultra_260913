@@ -23,13 +23,19 @@
 # 清残留（养成习惯；换端口/改参数后重启用）
 ./My_note/dev/test/cleanup_arm_stack.sh
 
-# A) 只录制（下行关闭，宿主机手拖或 teleop 都不会被 VM 执行）
-ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py
+# A) 录制（下行关闭 = 零干扰；再卸力方便手拖）
+ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py \
+  release_torque:=true
 
-# B) 录制 + 回放（下行开启）
+# B) 回放 / rollout（下行开启）
 ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py \
   enable_downlink:=true poll_rate_hz:=25.0
 ```
+
+宿主机连 **`192.168.174.128:1348`**（仅主机网：VM `192.168.174.128` ↔ 宿主机 `192.168.174.1`）。
+
+> `release_torque:=true` 是**启动就卸力**（手拖示教用）；只在下行关闭时用，
+> 回放时不要加（否则宿主机第一条命令还得先上力）。
 
 启动日志里确认这 3 行再让宿主机连：
 
@@ -113,7 +119,7 @@ launch 暴露（`ros2 launch ... <参数>:=<值>`）：
 | `arm_baudrate` | `1000000` | 波特率 |
 | `tcp_port` | `1348` | TCP 端口 |
 | `poll_rate_hz` | `30.0` | 采样频率；**建议 20~25**（6 舵机一轮读 ≈35ms，30 会顶满总线） |
-| `release_torque` | `false` | 启动即卸力（手拖示教用） |
+| `release_torque` | `false` | 启动即卸力（手拖示教用，配合 `enable_downlink:=false`） |
 | `enable_downlink` | `false` | **执行宿主机命令**；`false` = 纯录制，零干扰 |
 | `watchdog_timeout` | `1.0` | 多少秒没收到命令 → SAFE（拉长就调它） |
 | `release_on_timeout` | `true` | 看门狗触发时是否卸力 |
@@ -162,9 +168,9 @@ stateDiagram-v2
 | `state=ARMED` | ✅ 正常执行中（上力） |
 | `state=SAFE` + `downlink SAFE: <原因>` | ⚠️ 停了。原因=`watchdog timeout` / `client disconnected` / `too many malformed downlink lines` |
 | `bus_servo_read_position: [407]` | 驱动读某个舵机的当前脉宽（正常噪音） |
-| `read timeout: id=N cmd=0xXX` | 某次读没等到回包（0.3s 后放弃，**会自动恢复**） |
-| `no measured frames for Ns ...` | 上行推不出帧了，见下方排查 |
-| `client connected/disconnected` | 宿主机连上/断开 |
+| `bus_servo read timeout: id=N cmd=0xNN` | 某次读没等到回包（0.3s 后放弃返回 `None`，**会自动恢复**） |
+| `no measured frames for Ns while M client(s) connected: <原因>` | 上行推不出帧了，见下方排查 |
+| `client connected: <ip:port>` / `client disconnected: <ip:port>` | 宿主机连上/断开 |
 
 ---
 
@@ -175,7 +181,7 @@ stateDiagram-v2
 | `cannot bind 0.0.0.0:1348 ... another dataset_stream is probably still running` | 端口被残留进程占着 → `./My_note/dev/test/cleanup_arm_stack.sh` |
 | 启动即 `SerialException: [Errno 5] could not open port` | CH340 掉线 → 驱动**自动重试 30×1s**，等几秒；不行就拔插 USB / VMware 重新连接 |
 | `driver NOT ready: .../get_state is missing` | 驱动节点死了（多半是上面的串口问题） |
-| `no measured frames for Ns` | ① CH340 掉线 ② 舵机**电源没开**（读会一直等）③ 多个 `ros_robot_controller` 抢串口 |
+| `no measured frames for Ns` | ① CH340 掉线 ② 舵机**电源没开**（每次读 0.3s 超时后放弃 → 一直没帧，但不会卡死）③ 多个 `ros_robot_controller` 抢串口 |
 | 回放动作卡住 / 只做一部分 | 见 `My_note/dev/stream_docs/VM侧排查_回放不稳定.md`（已定位并修复） |
 | 手臂一开动就抖一下 | 起手大跳 → 电流尖峰导致串口丢一次响应（现在是 0.3s 抖动，不再卡死）；根治靠给舵机独立电源 |
 | 命令率忽高忽低 | `poll_rate_hz` 偏高：6 舵机一轮读 ≈35ms，30Hz 顶满总线 → 降到 20~25 |
@@ -194,6 +200,10 @@ stateDiagram-v2
 | `test/test_downlink.py` | `downlink.py` 单测 |
 | `My_note/dev/test/test_downlink_integration.py` | 下行集成测试（假驱动，无需真机） |
 | `My_note/dev/test/probe_replay_follow.py` | 真机验证：下发小目标，看实测角是否跟随 |
+| `My_note/dev/test/cleanup_arm_stack.sh` | 清残留进程 / 释放 1348 端口 |
+| `My_note/dev/test/monitor_servo_cmds.py` | 带时间戳监控所有舵机指令 |
+| `My_note/dev/test/probe_joint_range.py` | 卸力手推，测各关节可达 pulse 范围 + 读硬限 |
+| `My_note/dev/test/read_servo_id.py` / `read_servo_state.py` | 直连 SDK 读 id / 位置·电压·温度 |
 
 ---
 

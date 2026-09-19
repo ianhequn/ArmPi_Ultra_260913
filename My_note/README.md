@@ -13,9 +13,9 @@
 | B | **宿主机经虚拟串口 ASCII 命令控制** | ✅ 硬件验证 | `arm_serial_bridge` |
 | C | **上位机 VOFA+ 经 UDP(RawData ASCII) 双向控制** | ✅ UDP 联调 | `arm_vofaUDP_bridge` |
 | D | **LeRobot 数据集采集（上行实测角度流）** | ✅ 已实现 | `arm_lerobot_dataset_stream` |
-| E | **LeRobot 回放/推理（下行驱动，端口复用）** | ✅ 已实现（真机待联调） | 同上 + `enable_downlink:=true` |
+| E | **LeRobot 回放/推理（下行驱动，端口复用）** | ✅ 真机验证通过 | 同上 + `enable_downlink:=true` |
 | F | **手动调试/测量脚本**（读舵机、手推测范围、集成测试） | ✅ | `dev/test/` |
-| G | **文档与云记忆**（本地文档 + 阿里云百炼记忆库） | ✅ 20 条 | `dev/pi_project_mem.md` §5 |
+| G | **文档与云记忆**（本地文档 + 阿里云百炼记忆库） | ✅ 23 条 | `dev/pi_project_mem.md` §5 |
 
 ---
 
@@ -52,6 +52,7 @@ ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py release_tor
 ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py enable_downlink:=true
 ```
 - 宿主机连 `192.168.174.128:1348`（仅主机网），TCP 换行 JSON，**宿主机不装 ROS2**
+- 📘 **包内专属 README（用法/协议/参数/日志判读/排障）**：[`../src/arm_lerobot_dataset_stream/README.md`](../src/arm_lerobot_dataset_stream/README.md)
 - 文档：
   - 上行协议/用法：[`dev/lerobot数据集流协议.md`](dev/lerobot数据集流协议.md)
   - 下行协议/参数：[`dev/stream_docs/lerobot下行控制协议与VM设计.md`](dev/stream_docs/lerobot下行控制协议与VM设计.md)
