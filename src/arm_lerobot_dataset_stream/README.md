@@ -24,12 +24,10 @@
 ./My_note/dev/test/cleanup_arm_stack.sh
 
 # A) 录制（下行关闭 = 零干扰；再卸力方便手拖）
-ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py \
-  release_torque:=true
+ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py release_torque:=true poll_rate_hz:=25.0
 
 # B) 回放 / rollout（下行开启）
-ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py \
-  enable_downlink:=true poll_rate_hz:=25.0
+ros2 launch arm_lerobot_dataset_stream arm_lerobot_dataset.launch.py enable_downlink:=true poll_rate_hz:=25.0
 ```
 
 宿主机连 **`192.168.174.128:1348`**（仅主机网：VM `192.168.174.128` ↔ 宿主机 `192.168.174.1`）。
