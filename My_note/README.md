@@ -72,6 +72,7 @@ python3 dev/test/test_downlink_integration.py  # 下行集成测试（假驱动�
 ### G. 学习教程与记忆
 - 一步一步教程（11 章）：[`dev/learn/README.md`](dev/learn/README.md)
 - 项目枢纽（哲学+索引+决策+记忆库用法）：[`dev/pi_project_mem.md`](dev/pi_project_mem.md)
+- **厂商程序功能清单**：[`dev/HuanEr/`](dev/HuanEr/README.md)（帧协议 · SDK 42 方法 · ROS2 32 接口 · STM32 固件）
 - 工具文档（Codex）：[`codex/`](codex/)
 
 ---
@@ -88,6 +89,7 @@ My_note/
 │   ├── VOFA_UDP控制方案.md    #   用途 C
 │   ├── lerobot数据集流协议.md  #   用途 D/E
 │   ├── arm_control_*.md     #   移植需求/组件/设计/计划
+│   ├── HuanEr/              #   **厂商程序功能清单**（协议/SDK/ROS2节点/固件）
 │   ├── learn/               #   一步一步开发教程 00~10 + README
 │   ├── stream_docs/         #   宿主机侧协议文档 + VM 完成报告
 │   └── test/                #   手动脚本 + README
