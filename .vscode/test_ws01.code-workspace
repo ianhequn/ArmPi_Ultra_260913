@@ -1,0 +1,33 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../YDLIDAR"
+		}
+	],
+	"settings": {
+		"ROS2.distro": "jazzy",
+		"python.autoComplete.extraPaths": [
+			"/home/u24/MyTest/dev01/ros2/test_ws01/install/arm_lerobot_dataset_stream/lib/python3.12/site-packages",
+			"/home/u24/MyTest/dev01/ros2/test_ws01/install/arm_vofaUDP_bridge/lib/python3.12/site-packages",
+			"/home/u24/MyTest/dev01/ros2/test_ws01/install/servo_controller/lib/python3.12/site-packages",
+			"/home/u24/MyTest/dev01/ros2/test_ws01/install/arm_serial_bridge/lib/python3.12/site-packages",
+			"/home/u24/MyTest/dev01/ros2/test_ws01/install/servo_controller_msgs/lib/python3.12/site-packages",
+			"/home/u24/MyTest/dev01/ros2/test_ws01/install/ros_robot_controller/lib/python3.12/site-packages",
+			"/home/u24/MyTest/dev01/ros2/test_ws01/install/ros_robot_controller_msgs/lib/python3.12/site-packages",
+			"/opt/ros/jazzy/lib/python3.12/site-packages"
+		],
+		"python.analysis.extraPaths": [
+			"/home/u24/MyTest/dev01/ros2/test_ws01/install/arm_lerobot_dataset_stream/lib/python3.12/site-packages",
+			"/home/u24/MyTest/dev01/ros2/test_ws01/install/arm_vofaUDP_bridge/lib/python3.12/site-packages",
+			"/home/u24/MyTest/dev01/ros2/test_ws01/install/servo_controller/lib/python3.12/site-packages",
+			"/home/u24/MyTest/dev01/ros2/test_ws01/install/arm_serial_bridge/lib/python3.12/site-packages",
+			"/home/u24/MyTest/dev01/ros2/test_ws01/install/servo_controller_msgs/lib/python3.12/site-packages",
+			"/home/u24/MyTest/dev01/ros2/test_ws01/install/ros_robot_controller/lib/python3.12/site-packages",
+			"/home/u24/MyTest/dev01/ros2/test_ws01/install/ros_robot_controller_msgs/lib/python3.12/site-packages",
+			"/opt/ros/jazzy/lib/python3.12/site-packages"
+		]
+	}
+}

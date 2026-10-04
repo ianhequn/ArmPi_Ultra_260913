@@ -1,0 +1,27 @@
+# YDLIDAR SCL (设备自报 Model: F2) —— 实测参数
+# 实测：串口 /dev/ttyUSB0，波特率 115200，单通道；每帧 490 点，SampleRate 3K，5Hz。
+ydlidar_ros2_driver_node:
+  ros__parameters:
+    port: /dev/ttyUSB0        # 装了 udev 规则后可用 /dev/ydlidar 更稳
+    frame_id: laser_frame
+    ignore_array: ""
+    baudrate: 115200          # ★ 实测 115200（不是 230400）
+    lidar_type: 4             # ★ TYPE_SCL
+    device_type: 0            # 串口
+    isSingleChannel: true     # ★ 单通道（one-way = yes）
+    intensity: true
+    intensity_bit: 8
+    sample_rate: 3            # ★ 单通道 = 3
+    abnormal_check_count: 4
+    fixed_resolution: true
+    reversion: true           # 与 scl_test 参考实现一致
+    inverted: true            # 与 scl_test 参考实现一致
+    auto_reconnect: true
+    support_motor_dtr: false
+    angle_max: 180.0
+    angle_min: -180.0
+    range_max: 64.0
+    range_min: 0.05
+    frequency: 5.0            # 设备报 5Hz
+    invalid_range_is_inf: false
+    debug: false
