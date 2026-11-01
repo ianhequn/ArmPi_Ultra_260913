@@ -12,10 +12,11 @@
 | 项目 | test_ws01（ROS2 workspace） |
 | 工作区根 | `/home/u24/MyTest/dev01/ros2/test_ws01` |
 | 本文件 | `My_note/dev/pi_project_mem.md` |
+| 顶层索引 | `My_note/README.md`（**本机用途总览 + 使用文档位置**） |
 | 环境 | ROS2 **Jazzy** / Python 3.12 / x86_64 / colcon |
-| 现有包 | `ros_robot_controller[_msgs]`、`servo_controller[_msgs]`、`arm_serial_bridge`、`arm_vofaUDP_bridge`、`test_01_CH340`（C++，弃用） |
-| 当前阶段 | **移植完成**（阶段 1–6）；新增：宿主机串口控制（方案） |
-| 最后更新 | 2026-09-11 |
+| 现有包 | `ros_robot_controller[_msgs]`、`servo_controller[_msgs]`、`arm_serial_bridge`、`arm_vofaUDP_bridge`、`arm_lerobot_dataset_stream`、`test_01_CH340`（C++，弃用） |
+| 当前阶段 | **移植完成**（阶段 1–6）+ 宿主机串口桥 + VOFA UDP 桥 + LeRobot 上行/下行（回放） |
+| 最后更新 | 2026-09-17 |
 
 ---
 
@@ -43,9 +44,13 @@
 | [`代码组织结构.md`](代码组织结构.md) | **代码组织**：包/节点/模块 + 依赖 + 数据管线（mermaid 多视图） | ✅ |
 | [`宿主机串口控制方案.md`](宿主机串口控制方案.md) | 宿主机经虚拟串口发简单命令控制角度（**已实现+硬件联调**） | ✅ |
 | [`VOFA_UDP控制方案.md`](VOFA_UDP控制方案.md) | 上位机 VOFA+ 经 UDP(RawData ASCII) 双向控制（**已实现、UDP 联调**） | ✅ |
+| [`lerobot数据集流协议.md`](lerobot数据集流协议.md) | VM 经 TCP+JSON 向宿主机 LeRobot 流式输出实测关节角（上行），并支持**下行回放** | ✅ |
+| [`stream_docs/lerobot下行控制协议与VM设计.md`](stream_docs/lerobot下行控制协议与VM设计.md) | **下行/回放协议**：命令、限幅、看门狗、状态机（VM 侧已实现） | ✅ |
+| [`learn/`](learn/README.md) | **一步一步开发教程**（11 章：建包→驱动→网关→桥→数据流→排错） | ✅ |
 
 > 阶段：**移植/编码**（阶段 1–4 完成且硬件已验证）。
 > 其它位置：`My_note/codex/`（Codex 工具文档）。
+> **用途总览请见 [`../README.md`](../README.md)**（本机所有用途 + 各用途文档位置）。
 
 ---
 
@@ -55,6 +60,15 @@
 - **D1** 沿用原始包名（`servo_controller` / `ros_robot_controller` / `*_msgs`）。
 - **D2** 最小工作量、按原有格式；不引入 Lifecycle / ros2_control / FollowJointTrajectory。
 - **D3** 接口沿用原工程 `ServosPosition`。
+- **D4** 软硬限一致：`servo_controller.yaml` 的 `min/max` 已对齐**舵机内部硬限（`0x32`）**；
+  joint4 收紧为 −100°~+90°。实测：舵机硬限 id1=[0,700]、id5=[125,875]，其余为出厂 [0,1000]。
+- **D7** 下行**不做限速**：宿主机目标直通 `/servo_controller`，由舵机按 `duration` 插值（限速会截断快动作，实测差 54°）。
+- **D8** 驱动打开串口**自动重试 30×1s**（CH340 的 `[Errno 5] I/O error` 通常几秒内自愈）；`dataset_stream` 启动 10s 查不到 `get_state` 会明确报错。
+- **D6** 上行"最新帧"模型：采样 tick 不碰 socket（覆盖写单槽位），每客户端独立发送线程、
+  跳过即丢（`SO_SNDBUF=2048` 有界、`dropped` 计数）→ 慢客户端拖不住采样/下行 tick，
+  宿主机可任意改 `dataset.fps`（建议读取时 drain 到最新帧）。
+- **D5** LeRobot 链路：上行（录制）+ 下行（回放）共用一条 TCP；`enable_downlink` 默认
+  `false`（**录制零干扰**），下行以 ~28Hz 生效（串口读 6 舵机 35ms 是上限）。
 
 ---
 
@@ -76,7 +90,7 @@
 | `user_id` | `u24_ros2_dev_01` |
 | `project_id` | `ae32f4cf20ca41deb1bfee85e7f272aa` |
 | `memory_library_id` | `89ff0fcfe3864dbc928541290fb78877` |
-| 已存条目 | 17 条：开发哲学 / 关键决策 / 控制架构 / 环境事实 / 底层设计草稿 / 移植计划 / 编码约定 / 移植完成 / 串口路径处理 / 宿主串口桥 / 串口设备识别 / VOFA UDP 桥 / VOFA RawData 粘连处理 / 卸力与实测角度命令 / 扭矩调试结论 / USB掉线重连 |
+| 已存条目 | 20 条：开发哲学 / 关键决策 / 控制架构 / 环境事实 / 底层设计草稿 / 移植计划 / 编码约定 / 移植完成 / 串口路径处理 / 宿主串口桥 / 串口设备识别 / VOFA UDP 桥 / VOFA RawData 粘连处理 / 卸力与实测角度命令 / 扭矩调试结论 / USB掉线重连 / LeRobot数据集流 / 舵机硬限与软限对齐 / LeRobot下行回放 |
 
 **检索（先查再答）**
 ```bash

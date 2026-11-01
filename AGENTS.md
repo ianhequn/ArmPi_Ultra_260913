@@ -12,10 +12,11 @@
 
 ## 1. 新会话启动流程（建议顺序）
 
-1. **先读枢纽**：`My_note/dev/pi_project_mem.md`（= 用户哲学 + 文档索引 + 关键决策 + 记忆库用法）。
-2. 按任务读对应文档（见 §3）。
-3. 涉及**历史/偏好/决策**时，**先查云记忆库再回答**（见 §4）。
-4. **改动前先说清计划**，用户确认后再动手。
+1. **先读用途总览**：`My_note/README.md`（本机所有用途 + 使用文档位置）。
+2. **再读枢纽**：`My_note/dev/pi_project_mem.md`（= 用户哲学 + 文档索引 + 关键决策 + 记忆库用法）。
+3. 按任务读对应文档（见 §3）。
+4. 涉及**历史/偏好/决策**时，**先查云记忆库再回答**（见 §4）。
+5. **改动前先说清计划**，用户确认后再动手。
 
 ---
 
@@ -25,7 +26,10 @@
 test_ws01/
 ├── AGENTS.md                 # 本文件
 ├── src/                      # ROS2 包（唯一被 git 跟踪的代码区）
+├── My_note/README.md         # **本机用途总览 + 使用文档位置**
 ├── My_note/dev/              # 本地文档/记忆（含枢纽 pi_project_mem.md）
+│   ├── learn/                # 一步一步教程
+│   ├── stream_docs/          # LeRobot 主机侧协议/报告
 │   └── test/                 # 手动测试脚本
 ├── My_note/codex/            # Codex 工具文档摘录
 └── build/ install/ log/      # colcon 产物（忽略）
@@ -87,9 +91,11 @@ SKILL_SESSION_ID=<32位hex> python3 scripts/add_memory_content.py \
 - 移植阶段 1–6 **全部完成**，硬件已验证（脉宽 + 角度两种控制）。
 - 可用接口：
   - `/servo_controller`（`ServoPosition`/`ServosPosition`，单位 `pulse`/`rad`/`deg`）
-  - `/joint_controller`（`sensor_msgs/JointState`）
+  - `/joint_controller`（`sensor_msgs/JointState`）——⚠️ 厂商回调有 bug，**勿用**
   - `/ros_robot_controller/bus_servo/set_position`（直接脉宽）
   - 反馈：`/controller_manager/servo_states`、`joint_states`；服务 `get_state`
+- LeRobot 链路（`arm_lerobot_dataset_stream`）：上行实测角流 + 下行回放（`enable_downlink` 默认关）。
+- 限位：`servo_controller.yaml` 软限已对齐舵机硬限（`0x32`）；joint4 为 −100°~+90°。
 - 未移植（受限）：`kinematics`/IK（厂商 `.so` 为 aarch64，本机不可用）。
 
 ---
@@ -103,4 +109,5 @@ SKILL_SESSION_ID=<32位hex> python3 scripts/add_memory_content.py \
   ros2 launch ros_robot_controller ros_robot_controller.launch.py \
     device:=/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0
   ```
-- ⚠️ CH340 在 VMware 下**反复开关**易报 `Input/output error` 甚至掉线：等几秒再启动，或拔插/在 VMware 重新连接。
+- ⚠️ CH340 在 VMware 下**反复开关**易报 `Input/output error` 甚至掉线。驱动现已**自动重试打开串口 30 次（1s 一次）**，通常几秒内自愈；仍不行则拔插 / 在 VMware 重新连接。
+- `dataset_stream` 启动 10s 内若拿不到 `get_state`，会明确报 `driver NOT ready ...`（不再静默无数据）。
